@@ -31,6 +31,16 @@ from html import unescape
 from typing import Optional
 from urllib.parse import urljoin
 
+from identity import detect_lang
+
+
+LANG_LABELS = {
+    "en": "English", "fr": "French", "es": "Spanish", "de": "German",
+    "pt": "Portuguese", "it": "Italian", "nl": "Dutch", "ar": "Arabic",
+    "ja": "Japanese", "zh": "Chinese", "ko": "Korean", "ru": "Russian",
+    "tr": "Turkish",
+}
+
 # ---------------------------------------------------------------------------
 # Generic meta extraction
 # ---------------------------------------------------------------------------
@@ -155,6 +165,21 @@ def extract_twitter(body: str, username: str) -> dict:
     sc = _grab_int(section, "statuses_count")
     if sc is not None:
         info["posts"] = sc
+    lc = _grab_int(section, "listed_count")
+    if lc is not None:
+        info["lists"] = lc
+    # `entities.url.urls[0].expanded_url` is the real http(s) URL the
+    # user pinned to their profile (the top-level `url` field is just a
+    # t.co shortener).
+    m = re.search(
+        r'"url":\s*\{\s*"urls":\s*\[\s*\{[^}]*?"expanded_url":\s*"((?:\\.|[^"\\])*)"',
+        section,
+    )
+    if m:
+        try:
+            info["website"] = json.loads(f'"{m.group(1)}"')
+        except Exception:
+            info["website"] = m.group(1)
     created = _grab_str(section, "created_at")
     if created:
         info["joined"] = created
@@ -206,6 +231,9 @@ def extract_tiktok(body: str, username: str) -> dict:
         info["private"] = bool(user["privateAccount"])
     if user.get("region"):
         info["location"] = user["region"]
+    bio_link = user.get("bioLink") or {}
+    if isinstance(bio_link, dict) and bio_link.get("link"):
+        info["website"] = bio_link["link"]
     for src, dst in (
         ("followerCount", "followers"),
         ("followingCount", "following"),
@@ -583,5 +611,13 @@ def extract_profile(site_name: str, body: str, base_url: str, username: str) -> 
     """
     site_fn = _PER_SITE.get(site_name)
     info = site_fn(body, username) if site_fn else extract_meta(body, base_url)
+    # Tag the bio language so the report can show a language chip and
+    # the cluster-level geo inference has a per-account hint to weigh.
+    bio = info.get("bio")
+    if isinstance(bio, str) and bio.strip():
+        lang = detect_lang(bio)
+        if lang:
+            info["language"] = lang
+            info["language_label"] = LANG_LABELS.get(lang, lang)
     # Final scrub: drop empty strings, keep zeros and False.
     return {k: v for k, v in info.items() if v not in (None, "", [])}

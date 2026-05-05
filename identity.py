@@ -126,7 +126,7 @@ _TZ_HINT_FROM_OFFSET = {
 }
 
 
-def _detect_lang(text: str) -> Optional[str]:
+def detect_lang(text: str) -> Optional[str]:
     if not text:
         return None
     # Script first.
@@ -202,7 +202,7 @@ def _infer_geo(members: list[dict]) -> Optional[GeoHint]:
         signals.append(f"location string ({n}× '{top}')")
 
     if not region:
-        lang = _detect_lang(" ".join(bios))
+        lang = detect_lang(" ".join(bios))
         if lang:
             label = {
                 "en": "English-speaking", "fr": "France / Francophone",

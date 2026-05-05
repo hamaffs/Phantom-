@@ -995,241 +995,498 @@ _HTML_TEMPLATE = """<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Phantom — {raw_html}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root {{
-    --bg: #0b0d12; --card: #141823; --card2: #1a1f2c; --line: #232836;
-    --muted: #8a93a6; --text: #e7eaf3; --green: #5dd39e; --yellow: #f5c060;
-    --red: #f25c54; --accent: #6aa6ff;
+    --bg: #0b0e15;
+    --bg-elev: #0f131c;
+    --surface: rgba(22, 27, 38, 0.55);
+    --surface-2: rgba(28, 34, 47, 0.65);
+    --surface-strong: rgba(36, 42, 58, 0.75);
+    --border: rgba(255, 255, 255, 0.06);
+    --border-strong: rgba(255, 255, 255, 0.12);
+    --text: #d9dde7;
+    --text-bright: #f3f5fa;
+    --muted: #7a8094;
+    --muted-2: #5a6075;
+    --accent: #7c8cff;
+    --accent-soft: rgba(124, 140, 255, 0.12);
+    --accent-line: rgba(124, 140, 255, 0.28);
+    --accent-glow: rgba(124, 140, 255, 0.18);
+    --teal: #4fd1c5;
+    --amber: #f4b860;
+    --rose: #f08a8a;
   }}
   * {{ box-sizing: border-box; }}
+  html, body {{ background: var(--bg); }}
   body {{
-    margin: 0; background: var(--bg); color: var(--text);
-    font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-                   "Helvetica Neue", Arial, sans-serif;
+    margin: 0; color: var(--text);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "SF Pro Display",
+                 system-ui, "Segoe UI", Roboto, sans-serif;
+    font-size: 14px; line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    letter-spacing: -0.005em;
+    background-image:
+      radial-gradient(circle at 18% -10%, rgba(124, 140, 255, 0.10), transparent 45%),
+      radial-gradient(circle at 88% 8%, rgba(167, 139, 250, 0.07), transparent 50%);
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+    min-height: 100vh;
   }}
-  header {{
-    padding: 32px 40px 20px; border-bottom: 1px solid var(--line);
+  a {{ color: var(--accent); text-decoration: none; }}
+  code, .mono {{
+    font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   }}
-  header h1 {{ margin: 0 0 6px; font-size: 22px; font-weight: 600; }}
-  header .meta {{ color: var(--muted); font-size: 13px; }}
-  header code {{
-    background: var(--card); padding: 2px 8px; border-radius: 4px;
-    color: var(--accent); font-size: 14px;
+
+  /* ---------- Header ---------- */
+  header.top {{
+    padding: 56px 56px 28px; position: relative;
   }}
+  header.top::after {{
+    content: ""; position: absolute; left: 56px; right: 56px; bottom: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent,
+      rgba(124, 140, 255, 0.35) 35%, rgba(167, 139, 250, 0.25) 70%, transparent);
+  }}
+  .brand {{
+    display: inline-flex; align-items: center; gap: 9px;
+    color: var(--muted); font-size: 11.5px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.18em;
+    margin-bottom: 22px;
+  }}
+  .brand .dot {{
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 12px var(--accent), 0 0 4px var(--accent);
+  }}
+  header.top h1 {{
+    margin: 0; font-size: 38px; font-weight: 700;
+    color: var(--text-bright); letter-spacing: -0.025em;
+    line-height: 1.1;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+  }}
+  header.top h1 .at {{ color: var(--muted-2); font-weight: 400; margin-right: 4px; }}
+  header.top .subtitle {{
+    margin-top: 14px; color: var(--muted); font-size: 13.5px;
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  }}
+  header.top .subtitle .sep {{ color: var(--muted-2); }}
+  header.top .subtitle b {{ color: var(--text); font-weight: 500; }}
+
+  /* ---------- Stats pills ---------- */
   .stats {{
-    display: flex; gap: 16px; padding: 14px 40px;
-    border-bottom: 1px solid var(--line);
-    position: sticky; top: 0; z-index: 10;
-    background: var(--bg);
-    backdrop-filter: blur(8px);
+    display: flex; flex-wrap: wrap; gap: 10px;
+    padding: 24px 56px 8px;
   }}
   .stat {{
-    background: var(--card); border: 1px solid var(--line);
-    padding: 10px 16px; border-radius: 8px; min-width: 100px;
+    display: inline-flex; align-items: baseline; gap: 9px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    padding: 11px 18px; border-radius: 10px;
+    transition: border-color 200ms ease, background 200ms ease;
   }}
-  .stat .n {{ font-size: 22px; font-weight: 600; }}
-  .stat .label {{ font-size: 11px; color: var(--muted); text-transform: uppercase;
-                  letter-spacing: 0.5px; }}
-  .stat.found .n {{ color: var(--green); }}
-  .stat.unknown .n {{ color: var(--yellow); }}
-  .stat.missing .n {{ color: var(--red); }}
+  .stat:hover {{
+    border-color: var(--border-strong);
+    background: var(--surface-2);
+  }}
+  .stat .n {{
+    font-size: 21px; font-weight: 700; letter-spacing: -0.02em;
+    color: var(--text-bright);
+  }}
+  .stat .label {{
+    font-size: 11.5px; color: var(--muted); font-weight: 500;
+  }}
+  .stat.found .n {{ color: var(--teal); }}
+  .stat.unknown .n {{ color: var(--amber); }}
+  .stat.missing .n {{ color: var(--rose); }}
   .stat.identity .n {{ color: var(--accent); }}
+
+  /* ---------- Sections ---------- */
+  section {{ padding: 32px 56px 8px; }}
+  .section-head {{
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 18px;
+  }}
+  .section-head h2 {{
+    margin: 0; font-size: 12px; font-weight: 600;
+    color: var(--muted); text-transform: uppercase;
+    letter-spacing: 0.14em;
+  }}
+  .section-head .count {{
+    background: var(--surface-2); color: var(--text);
+    border: 1px solid var(--border);
+    font-size: 11px; font-weight: 600;
+    padding: 2px 8px; border-radius: 6px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+  }}
+  .section-note {{
+    color: var(--muted); font-size: 12.5px;
+    margin: -8px 0 16px; max-width: 640px;
+  }}
+
+  /* ---------- Identity card ---------- */
   .id-card {{
-    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
-    padding: 22px; margin-bottom: 16px; display: flex; gap: 24px;
-    align-items: flex-start;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-radius: 16px; padding: 26px;
+    margin-bottom: 14px;
+    display: flex; gap: 26px; align-items: flex-start;
   }}
   .id-photos {{
-    display: grid; grid-template-columns: repeat(2, 64px); gap: 6px;
-    flex-shrink: 0;
+    display: grid; grid-template-columns: repeat(2, 72px);
+    gap: 8px; flex-shrink: 0;
   }}
   .photo-thumb {{
-    width: 64px; height: 64px; border-radius: 10px;
-    background: #0a0c11 center/cover no-repeat;
-    border: 1px solid var(--line);
+    width: 72px; height: 72px; border-radius: 12px;
+    background: rgba(0,0,0,0.3) center/cover no-repeat;
+    border: 1px solid var(--border-strong);
   }}
   .photo-thumb.empty {{
     display: flex; align-items: center; justify-content: center;
     color: var(--muted); font-size: 22px;
+    background: linear-gradient(135deg,
+      rgba(124,140,255,0.08), rgba(167,139,250,0.04));
   }}
   .id-body {{ flex: 1; min-width: 0; }}
   .id-head {{ display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }}
-  .id-head h3 {{ margin: 0; font-size: 19px; font-weight: 600; }}
-  .conf {{ font-size: 11px; padding: 4px 10px; border-radius: 999px; font-weight: 700; }}
-  .conf.high {{ background: rgba(93,211,158,.16); color: var(--green); }}
-  .conf.med  {{ background: rgba(245,192,96,.16); color: var(--yellow); }}
-  .conf.low  {{ background: rgba(138,147,166,.16); color: var(--muted); }}
-  .id-stats {{
-    display: flex; gap: 12px; margin-top: 14px; padding: 12px 0;
-    border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  .id-head h3 {{
+    margin: 0; font-size: 22px; font-weight: 700;
+    color: var(--text-bright); letter-spacing: -0.015em;
   }}
-  .id-stats .col {{ flex: 1; }}
-  .id-stats .n {{ font-size: 18px; font-weight: 700; }}
-  .id-stats .l {{ font-size: 11px; color: var(--muted);
-                  text-transform: uppercase; letter-spacing: 0.5px; }}
-  .id-facts {{ list-style: none; padding: 0; margin: 12px 0 0;
-               font-size: 13px; color: var(--muted); }}
-  .id-facts li {{ margin: 4px 0; }}
+  .conf {{
+    font-size: 10.5px; padding: 4px 10px; border-radius: 6px;
+    font-weight: 700; letter-spacing: 0.06em;
+    border: 1px solid transparent;
+  }}
+  .conf.high {{
+    background: rgba(79, 209, 197, 0.10); color: var(--teal);
+    border-color: rgba(79, 209, 197, 0.22);
+  }}
+  .conf.med {{
+    background: rgba(244, 184, 96, 0.10); color: var(--amber);
+    border-color: rgba(244, 184, 96, 0.22);
+  }}
+  .conf.low {{
+    background: var(--surface-2); color: var(--muted);
+    border-color: var(--border-strong);
+  }}
+  .id-stats {{
+    display: flex; gap: 28px; margin-top: 18px;
+    padding: 16px 0;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }}
+  .id-stats .col {{ flex: 0 1 auto; }}
+  .id-stats .n {{
+    font-size: 19px; font-weight: 700;
+    color: var(--text-bright); letter-spacing: -0.015em;
+  }}
+  .id-stats .l {{
+    font-size: 10.5px; color: var(--muted);
+    margin-top: 2px; text-transform: uppercase;
+    letter-spacing: 0.08em; font-weight: 500;
+  }}
+  .id-facts {{
+    list-style: none; padding: 0; margin: 14px 0 0;
+    font-size: 13px; color: var(--muted);
+  }}
+  .id-facts li {{ margin: 5px 0; }}
   .id-facts b {{ color: var(--text); font-weight: 500; }}
-  .id-rationale {{ margin-top: 10px; font-size: 11.5px;
-                   color: var(--muted); font-style: italic; }}
-  section {{ padding: 24px 40px; }}
-  section h2 {{ margin: 0 0 14px; font-size: 16px; font-weight: 600; }}
+  .id-rationale {{
+    margin-top: 12px; font-size: 11.5px;
+    color: var(--muted-2); font-style: italic;
+  }}
+
+  /* ---------- Cards grid ---------- */
   .grid {{
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 16px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(296px, 1fr));
+    gap: 18px;
   }}
   .card {{
-    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
-    overflow: hidden; display: flex; flex-direction: column;
-    transition: border-color 120ms ease, transform 120ms ease;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-radius: 14px;
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    transition: transform 220ms cubic-bezier(.2,.7,.2,1),
+                border-color 220ms ease,
+                box-shadow 220ms ease;
   }}
-  .card:hover {{ border-color: var(--accent); transform: translateY(-2px); }}
-  .card a {{ color: inherit; text-decoration: none; }}
+  .card:hover {{
+    transform: translateY(-3px);
+    border-color: var(--accent-line);
+    box-shadow: 0 14px 40px -10px var(--accent-glow);
+  }}
+  .card a {{ color: inherit; }}
   .card-head {{
     position: relative;
-    aspect-ratio: 1 / 1; background: #0a0c11 center/cover no-repeat;
+    aspect-ratio: 1 / 1;
+    background: rgba(0, 0, 0, 0.35) center/cover no-repeat;
     display: flex; align-items: flex-end; justify-content: flex-start;
   }}
+  .card-head::after {{
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(to bottom,
+      transparent 55%, rgba(11, 14, 21, 0.55) 88%, rgba(11, 14, 21, 0.78));
+    pointer-events: none;
+  }}
   .card-head .badge {{
-    position: absolute; top: 10px; right: 10px;
-    background: rgba(11,13,18,.78); border: 1px solid rgba(255,255,255,.12);
-    color: var(--text); padding: 4px 10px; border-radius: 999px;
-    font-size: 11px; font-weight: 600; backdrop-filter: blur(6px);
+    position: absolute; top: 12px; right: 12px;
+    background: rgba(11, 14, 21, 0.62);
+    border: 1px solid var(--border-strong);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    color: var(--text-bright);
+    padding: 5px 11px; border-radius: 7px;
+    font-size: 11px; font-weight: 600;
+    letter-spacing: 0.02em; z-index: 2;
   }}
   .card-head .verified {{
-    position: absolute; top: 10px; left: 10px;
-    background: rgba(106,166,255,.92); color: #0b0d12;
-    padding: 3px 8px; border-radius: 999px;
-    font-size: 11px; font-weight: 700;
+    position: absolute; top: 12px; left: 12px;
+    background: var(--accent-soft); color: var(--accent);
+    border: 1px solid var(--accent-line);
+    backdrop-filter: blur(14px);
+    padding: 4px 9px; border-radius: 6px;
+    font-size: 10px; font-weight: 700;
+    letter-spacing: 0.07em; z-index: 2;
   }}
   .card-head .private {{
-    position: absolute; bottom: 10px; right: 10px;
-    background: rgba(245,192,96,.92); color: #0b0d12;
-    padding: 3px 8px; border-radius: 999px;
-    font-size: 11px; font-weight: 700;
+    position: absolute; bottom: 12px; left: 12px;
+    background: rgba(244, 184, 96, 0.14); color: var(--amber);
+    border: 1px solid rgba(244, 184, 96, 0.28);
+    backdrop-filter: blur(14px);
+    padding: 4px 9px; border-radius: 6px;
+    font-size: 10px; font-weight: 700;
+    letter-spacing: 0.07em; z-index: 2;
   }}
   .card-head .initial {{
-    width: 100%; height: 100%; display: flex; align-items: center;
-    justify-content: center; color: var(--muted); font-size: 56px; font-weight: 700;
+    width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--muted); font-size: 60px; font-weight: 600;
+    background: linear-gradient(135deg,
+      rgba(124, 140, 255, 0.08), rgba(167, 139, 250, 0.05));
   }}
-  .card-body {{ padding: 14px 16px 16px; }}
-  .card-body .name {{ font-size: 16px; font-weight: 600; line-height: 1.25;
-                      word-break: break-word; }}
-  .card-body .handle {{ color: var(--muted); font-size: 12px; margin-top: 2px; }}
-  .card-body .bio {{ color: var(--text); font-size: 12.5px; margin-top: 10px;
-                     opacity: 0.85; display: -webkit-box; -webkit-line-clamp: 3;
-                     -webkit-box-orient: vertical; overflow: hidden;
-                     word-break: break-word; }}
+
+  .card-body {{
+    padding: 16px 18px 18px; flex: 1;
+    display: flex; flex-direction: column;
+  }}
+  .card-body .name {{
+    font-size: 17px; font-weight: 600;
+    color: var(--text-bright);
+    line-height: 1.3; word-break: break-word;
+    letter-spacing: -0.01em;
+  }}
+  .card-body .handle {{
+    color: var(--muted); font-size: 12.5px;
+    margin-top: 3px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+  }}
+  .card-body .bio {{
+    color: var(--text); font-size: 13px;
+    margin-top: 12px;
+    opacity: 0.9;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    word-break: break-word;
+  }}
   .card-body .meta-row {{
-    display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px;
-    font-size: 11px; color: var(--muted);
+    display: flex; flex-wrap: wrap; gap: 6px;
+    margin-top: 12px;
+    font-size: 11.5px; color: var(--muted);
   }}
   .card-body .meta-row span {{
-    background: var(--card2); border: 1px solid var(--line);
-    padding: 3px 8px; border-radius: 999px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    padding: 3px 9px; border-radius: 6px;
   }}
   .card-body .repo-row {{
     margin-top: 10px; font-size: 11.5px; color: var(--muted);
     display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
   }}
   .card-body .repo-row .repo {{
-    background: rgba(106,166,255,.12); color: var(--accent);
-    padding: 2px 8px; border-radius: 6px; font-family: ui-monospace, monospace;
-  }}
-  .alt-sites-row {{
-    display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
-    margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line);
-  }}
-  .alt-sites-row .multi-badge {{
-    font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px;
-    background: rgba(93,211,158,.16); color: var(--green);
-  }}
-  .alt-sites-row .alt-site {{
-    font-size: 11px; padding: 3px 9px; border-radius: 999px;
-    background: var(--card2); color: var(--text); text-decoration: none;
-    border: 1px solid var(--line);
-    transition: border-color 120ms ease, background 120ms ease;
-  }}
-  .alt-sites-row .alt-site:hover {{ border-color: var(--accent); background: rgba(106,166,255,.08); }}
-  @media (max-width: 720px) {{
-    header, .stats, section, footer {{ padding-left: 18px; padding-right: 18px; }}
-    .stats {{ flex-wrap: wrap; }}
-    .id-card {{ flex-direction: column; align-items: stretch; gap: 14px; }}
-    .id-photos {{ grid-template-columns: repeat(4, 56px); }}
-    .photo-thumb {{ width: 56px; height: 56px; }}
-    .grid {{ grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }}
-    .card-head {{ aspect-ratio: 4 / 3; }}
+    background: var(--accent-soft); color: var(--accent);
+    border: 1px solid var(--accent-line);
+    padding: 3px 8px; border-radius: 6px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 11px;
   }}
   .card-body .stats-row {{
-    display: flex; gap: 12px; margin-top: 12px; padding-top: 12px;
-    border-top: 1px solid var(--line);
+    display: flex; gap: 14px; margin-top: 14px; padding-top: 14px;
+    border-top: 1px solid var(--border);
   }}
   .card-body .stats-row .col {{ flex: 1; min-width: 0; }}
-  .card-body .stats-row .n {{ font-weight: 600; font-size: 14px; }}
-  .card-body .stats-row .l {{ font-size: 10.5px; color: var(--muted);
-                              text-transform: uppercase; letter-spacing: 0.4px; }}
+  .card-body .stats-row .n {{
+    font-weight: 700; font-size: 15px;
+    color: var(--text-bright); letter-spacing: -0.01em;
+  }}
+  .card-body .stats-row .l {{
+    font-size: 10px; color: var(--muted);
+    margin-top: 3px; text-transform: uppercase;
+    letter-spacing: 0.08em; font-weight: 500;
+  }}
   .card-body .footer {{
     display: flex; align-items: center; justify-content: space-between;
-    margin-top: 12px; gap: 8px;
+    margin-top: auto; padding-top: 16px; gap: 8px;
   }}
   .card-body .variant {{
     display: inline-block; font-size: 11px;
-    background: rgba(106,166,255,.12); color: var(--accent);
-    padding: 3px 9px; border-radius: 999px;
+    background: var(--surface-2); color: var(--muted);
+    padding: 4px 9px; border-radius: 6px;
+    border: 1px solid var(--border);
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
   }}
   .card-body .open {{
-    font-size: 11px; color: var(--accent); text-decoration: none;
-    border: 1px solid rgba(106,166,255,.3); padding: 4px 10px;
-    border-radius: 6px; transition: background 120ms ease;
+    font-size: 12px; font-weight: 600;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-line);
+    padding: 6px 13px; border-radius: 7px;
+    transition: background 200ms ease, border-color 200ms ease,
+                transform 200ms ease;
   }}
-  .card-body .open:hover {{ background: rgba(106,166,255,.12); }}
+  .card-body .open:hover {{
+    background: rgba(124, 140, 255, 0.20);
+    border-color: rgba(124, 140, 255, 0.45);
+    transform: translateX(2px);
+  }}
+
+  .alt-sites-row {{
+    display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+    margin-top: 14px; padding-top: 14px;
+    border-top: 1px solid var(--border);
+  }}
+  .alt-sites-row .multi-badge {{
+    font-size: 10.5px; font-weight: 600;
+    padding: 3px 9px; border-radius: 6px;
+    background: var(--accent-soft); color: var(--accent);
+    border: 1px solid var(--accent-line);
+    letter-spacing: 0.02em;
+  }}
+  .alt-sites-row .alt-site {{
+    font-size: 11px;
+    padding: 3px 9px; border-radius: 6px;
+    background: var(--surface-2); color: var(--text);
+    border: 1px solid var(--border);
+    transition: border-color 180ms ease, color 180ms ease;
+  }}
+  .alt-sites-row .alt-site:hover {{
+    border-color: var(--accent-line); color: var(--accent);
+  }}
+
+  /* ---------- Unknown table ---------- */
   .table {{
     width: 100%; border-collapse: collapse;
-    background: var(--card); border-radius: 10px; overflow: hidden;
-    border: 1px solid var(--line);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-radius: 12px; overflow: hidden;
   }}
-  .table th, .table td {{ padding: 10px 14px; text-align: left;
-                          border-bottom: 1px solid var(--line); }}
-  .table th {{ font-weight: 600; font-size: 12px; color: var(--muted);
-               text-transform: uppercase; letter-spacing: 0.5px; }}
+  .table th, .table td {{
+    padding: 13px 18px; text-align: left;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }}
+  .table th {{
+    font-weight: 600; font-size: 10.5px;
+    color: var(--muted); text-transform: uppercase;
+    letter-spacing: 0.10em;
+    background: var(--surface-2);
+  }}
   .table tr:last-child td {{ border-bottom: 0; }}
-  .table a {{ color: var(--accent); text-decoration: none; }}
+  .table tr:hover td {{ background: rgba(124, 140, 255, 0.03); }}
+  .table a {{ color: var(--accent); }}
   .table a:hover {{ text-decoration: underline; }}
-  .pill {{ font-size: 11px; padding: 2px 8px; border-radius: 999px;
-           background: rgba(245,192,96,.12); color: var(--yellow); }}
-  footer {{ color: var(--muted); padding: 24px 40px; font-size: 12px;
-            border-top: 1px solid var(--line); }}
+  .pill {{
+    font-size: 10.5px; padding: 3px 8px; border-radius: 6px;
+    background: rgba(244, 184, 96, 0.10); color: var(--amber);
+    border: 1px solid rgba(244, 184, 96, 0.20);
+    font-weight: 500;
+  }}
+
+  /* ---------- Footer ---------- */
+  footer {{
+    color: var(--muted); padding: 36px 56px 48px;
+    font-size: 12.5px; margin-top: 24px;
+    border-top: 1px solid var(--border);
+  }}
+  footer .footer-grid {{
+    display: flex; flex-direction: column; gap: 8px;
+  }}
+  footer code {{
+    background: var(--surface-2); border: 1px solid var(--border);
+    padding: 2px 7px; border-radius: 5px;
+    font-size: 11px; color: var(--text);
+  }}
+
+  @media (max-width: 760px) {{
+    header.top {{ padding: 36px 22px 22px; }}
+    header.top::after {{ left: 22px; right: 22px; }}
+    header.top h1 {{ font-size: 26px; }}
+    .stats, section, footer {{ padding-left: 22px; padding-right: 22px; }}
+    .id-card {{ flex-direction: column; align-items: stretch; gap: 16px; padding: 20px; }}
+    .id-photos {{ grid-template-columns: repeat(4, 60px); }}
+    .photo-thumb {{ width: 60px; height: 60px; }}
+    .grid {{ grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }}
+  }}
 </style>
 </head>
 <body>
-<header>
-  <h1>Phantom report</h1>
-  <div class="meta">Searching for <code>{raw_html}</code> · {n_variants} variant(s) · {elapsed:.1f}s · {generated_at}</div>
+<header class="top">
+  <div class="brand"><span class="dot"></span>Phantom · Intelligence Report</div>
+  <h1><span class="at">@</span>{raw_html}</h1>
+  <div class="subtitle">
+    <span><b>{n_variants}</b> variants tested</span>
+    <span class="sep">·</span>
+    <span>{elapsed:.1f}s scan time</span>
+    <span class="sep">·</span>
+    <span>{generated_at}</span>
+  </div>
 </header>
 
 <div class="stats">
-  <div class="stat identity"><div class="n">{n_identities}</div><div class="label">Photo matches</div></div>
-  <div class="stat found"><div class="n">{n_found}</div><div class="label">Found</div></div>
-  <div class="stat unknown"><div class="n">{n_unknown}</div><div class="label">Unknown</div></div>
-  <div class="stat missing"><div class="n">{n_missing}</div><div class="label">Missing</div></div>
+  <div class="stat found"><span class="n">{n_found}</span><span class="label">Found</span></div>
+  <div class="stat identity"><span class="n">{n_identities}</span><span class="label">Photo matches</span></div>
+  <div class="stat unknown"><span class="n">{n_unknown}</span><span class="label">Inconclusive</span></div>
+  <div class="stat missing"><span class="n">{n_missing}</span><span class="label">Not found</span></div>
 </div>
 
 {identity_section}
 
 <section>
-  <h2>Found ({n_found})</h2>
+  <div class="section-head">
+    <h2>Discovered accounts</h2>
+    <span class="count">{n_found}</span>
+  </div>
   {found_block}
 </section>
 
 <section>
-  <h2>Unknown ({n_unknown})</h2>
+  <div class="section-head">
+    <h2>Inconclusive</h2>
+    <span class="count">{n_unknown}</span>
+  </div>
   {unknown_block}
 </section>
 
 <footer>
-  Phantom · {n_missing} sites cleanly returned not-found · variants tried:
-  {variants_html}
+  <div class="footer-grid">
+    <div>{n_missing} sites returned a clean not-found result.</div>
+    <div>Variants tested: {variants_html}</div>
+  </div>
 </footer>
 </body>
 </html>
@@ -1266,44 +1523,7 @@ def _format_joined(s) -> Optional[str]:
             return None
 
 
-def _html_grouped_card(group) -> str:
-    """Render one card representing N results that share a person.
-
-    A solo group falls through to the original `_html_card`. A merged
-    group renders the richest member as the primary card with a "Found
-    on N sites" badge and a strip of small site links underneath.
-    """
-    if len(group) == 1:
-        return _html_card(group[0])
-
-    # Pick the row with the most populated profile dict as the "primary".
-    # Tie-broken by reliability so the most-trusted source wins.
-    primary = max(
-        group,
-        key=lambda r: (len(r.profile or {}), r.reliability),
-    )
-    others = [r for r in group if r is not primary]
-    sites_chips = "".join(
-        f'<a class="alt-site" href="{html.escape(r.url, quote=True)}" '
-        f'target="_blank" rel="noopener">{html.escape(r.site)}</a>'
-        for r in [primary] + others
-    )
-    multi_badge = f'<span class="multi-badge">found on {len(group)} sites</span>'
-
-    base = _html_card(primary)
-    # Splice the multi-site row into the card-body before the footer.
-    sites_block = (
-        f'<div class="alt-sites-row">{multi_badge}{sites_chips}</div>'
-    )
-    base = base.replace(
-        '<div class="footer">',
-        f'{sites_block}<div class="footer">',
-        1,
-    )
-    return base
-
-
-def _html_card(r: CheckResult) -> str:
+def _html_card(r: CheckResult, photo_match: Optional[list] = None) -> str:
     """Render one FOUND profile as an info-rich card.
 
     Layout (top → bottom):
@@ -1357,14 +1577,35 @@ def _html_card(r: CheckResult) -> str:
     if joined:
         chips.append(f'📅 {html.escape(str(joined))}')
     if p.get("website"):
-        chips.append(f'🔗 {html.escape(p["website"])}')
+        site_url = str(p["website"])
+        href = site_url if site_url.startswith(("http://", "https://")) else f"https://{site_url}"
+        chips.append(
+            f'🔗 <a href="{html.escape(href, quote=True)}" target="_blank" '
+            f'rel="noopener" style="color:inherit;text-decoration:underline">'
+            f'{html.escape(site_url)}</a>'
+        )
     if p.get("twitter_handle"):
-        chips.append(f'🐦 @{html.escape(p["twitter_handle"])}')
+        chips.append(
+            f'🐦 <a href="https://x.com/{html.escape(p["twitter_handle"], quote=True)}" '
+            f'target="_blank" rel="noopener" style="color:inherit;'
+            f'text-decoration:underline">@{html.escape(p["twitter_handle"])}</a>'
+        )
+    if p.get("language_label") or p.get("language"):
+        lang = p.get("language_label") or p["language"]
+        chips.append(f'🌐 {html.escape(str(lang))}')
     if p.get("steam_level") is not None:
         chips.append(f'🎮 lvl {p["steam_level"]}')
     if p.get("rating") is not None:
         chips.append(f'♟️ {p["rating"]}')
-    if p.get("karma") is not None:
+    # Reddit karma: prefer the breakdown over the bare total when we
+    # have it, but always fall back to the aggregate so the chip never
+    # disappears for accounts that only ship a combined value.
+    if p.get("post_karma") is not None or p.get("comment_karma") is not None:
+        if p.get("post_karma") is not None:
+            chips.append(f'⭐ {_format_count(p["post_karma"])} post karma')
+        if p.get("comment_karma") is not None:
+            chips.append(f'💬 {_format_count(p["comment_karma"])} comment karma')
+    elif p.get("karma") is not None:
         chips.append(f'⭐ {_format_count(p["karma"])} karma')
     meta_row = ""
     if chips:
@@ -1390,6 +1631,12 @@ def _html_card(r: CheckResult) -> str:
         stats.append(("posts", p["posts"]))
     if "hearts" in p:
         stats.append(("hearts", p["hearts"]))
+    if "lists" in p:
+        stats.append(("lists", p["lists"]))
+    if "views" in p:
+        stats.append(("views", p["views"]))
+    if "games" in p:
+        stats.append(("games", p["games"]))
     stats_row = ""
     if stats:
         cells = "".join(
@@ -1407,6 +1654,22 @@ def _html_card(r: CheckResult) -> str:
         f'target="_blank" rel="noopener">Open profile →</a>'
     )
 
+    # Photo-match: small badge + chips linking to the other accounts that
+    # share this profile photo. Each account still renders its own card;
+    # this is just a cross-reference annotation.
+    photo_match_html = ""
+    if photo_match:
+        chips = "".join(
+            f'<a class="alt-site" href="{html.escape(other.url, quote=True)}" '
+            f'target="_blank" rel="noopener">{html.escape(other.site)}</a>'
+            for other in photo_match
+        )
+        photo_match_html = (
+            '<div class="alt-sites-row">'
+            '<span class="multi-badge">📷 same photo as</span>'
+            f"{chips}</div>"
+        )
+
     body = (
         '<div class="card-body">'
         f'<div class="name">{html.escape(display_name)}</div>'
@@ -1415,6 +1678,7 @@ def _html_card(r: CheckResult) -> str:
         f"{meta_row}"
         f"{pinned_html}"
         f"{stats_row}"
+        f"{photo_match_html}"
         f'<div class="footer">{variant_pill}{open_link}</div>'
         "</div>"
     )
@@ -1539,27 +1803,18 @@ def _html_identity_card(c, idx: int, kind: str = "cluster") -> str:
     )
 
 
-def _photo_dedup_groups(found: list, clusters) -> list[list]:
-    """Group FOUND results that share a perceptually-matched photo.
-
-    `clusters` are IdentityCluster objects whose `member_indexes` point
-    into `found`. We re-use those: any cluster of size ≥ 2 produces one
-    grouped card; singletons render as individual cards as before.
-    """
-    if not clusters:
-        return [[r] for r in found]
-
-    used: set[int] = set()
-    groups: list[list] = []
-    for c in clusters:
+def _photo_match_map(found: list, clusters) -> dict[int, list]:
+    """For each FOUND index in a multi-member photo cluster, return the
+    other members of that cluster (so each card can show a small
+    cross-reference to the linked accounts)."""
+    out: dict[int, list] = {}
+    for c in clusters or []:
         idxs = [i for i in c.member_indexes if 0 <= i < len(found)]
-        if len(idxs) > 1:
-            groups.append([found[i] for i in idxs])
-            used.update(idxs)
-    for i, r in enumerate(found):
-        if i not in used:
-            groups.append([r])
-    return groups
+        if len(idxs) < 2:
+            continue
+        for i in idxs:
+            out[i] = [found[j] for j in idxs if j != i]
+    return out
 
 
 def export_html(grouped, raw, elapsed, path: Path, overall=None, clusters=None) -> None:
@@ -1577,7 +1832,10 @@ def export_html(grouped, raw, elapsed, path: Path, overall=None, clusters=None) 
     sections: list[str] = []
     if overall and len(found) >= 1:
         sections.append(
-            '<section><h2>Overall identity</h2>'
+            '<section>'
+            '<div class="section-head">'
+            '<h2>Subject overview</h2>'
+            '</div>'
             + _html_identity_card(overall, 1, kind="overall")
             + "</section>"
         )
@@ -1587,8 +1845,12 @@ def export_html(grouped, raw, elapsed, path: Path, overall=None, clusters=None) 
             for i, c in enumerate(multi)
         )
         sections.append(
-            f'<section><h2>Photo-matched accounts ({len(multi)})</h2>'
-            f'<p style="color:var(--muted);margin:-6px 0 14px;font-size:13px">'
+            '<section>'
+            '<div class="section-head">'
+            '<h2>Photo-matched accounts</h2>'
+            f'<span class="count">{len(multi)}</span>'
+            '</div>'
+            '<p class="section-note">'
             "Profile photos that match perceptually across two or more "
             "sites — strong evidence the same person owns these accounts."
             f'</p>{cards}</section>'
@@ -1596,9 +1858,10 @@ def export_html(grouped, raw, elapsed, path: Path, overall=None, clusters=None) 
     identity_section = "".join(sections)
 
     if found:
-        groups = _photo_dedup_groups(found, clusters)
+        match_map = _photo_match_map(found, clusters)
         found_block = '<div class="grid">' + "".join(
-            _html_grouped_card(g) for g in groups
+            _html_card(r, photo_match=match_map.get(i))
+            for i, r in enumerate(found)
         ) + "</div>"
     else:
         found_block = '<p style="color:var(--muted)">No accounts found.</p>'

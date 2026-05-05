@@ -7,8 +7,8 @@ Designed for **accuracy first**: a `[ FOUND ]` requires positive evidence (a pre
 - 60 hand-picked sites across dev, social, media, gaming, forum, and other
 - **Variant engine**: one input expands to dozens of plausible handles (separators, number/prefix/suffix variants, smart word splits, blind position-insertion for short tokens, first/last name permutations). Use `--exact` to disable.
 - **Compact terminal output**: one `[ FOUND ]` section, one `[ ? ]` section, `[MISSING]` shown as a count.
-- **Exportable reports**: `--export FILE` writes the results to **HTML** (card grid with profile photos), **JSON**, or **Markdown** — format inferred from the file extension.
-- **Public profile enrichment**: every FOUND site is scanned for the public profile data the SSR'd page already exposes — display name, bio, photo, follower / following / post counts, location, joined date, verified / private flags. No auth, no extra HTTP calls.
+- **Exportable reports**: `--export FILE` writes the results to **HTML** (premium intelligence-dashboard layout — Inter + JetBrains Mono, glass surfaces, soft-purple accent, one card per discovered profile), **JSON**, or **Markdown** — format inferred from the file extension.
+- **Public profile enrichment**: every FOUND site is scanned for the public profile data the SSR'd page already exposes — display name, bio, photo, follower / following / post counts, location, joined date, verified / private flags, bio language, website, plus per-platform extras (Twitter lists, TikTok hearts, GitHub pinned repos, YouTube total views, Reddit karma split, …). No auth, no extra HTTP calls.
 - **Reliability built-in**: every `(variant × site)` check runs through a shared task pool (so stragglers don't block subsequent variants), transient failures (timeouts, 5xx, transport errors) get one retry, and stable answers are cached on disk for an hour so re-runs are near-instant.
 - **Identity aggregation**: every FOUND account contributes to one "Overall identity" summary — display name, all photos, vote-counted locations, geo-region inference, total followers across platforms, oldest joined date, verified-on-N-of-M. Photo correlation (perceptually-hashed profile pictures matching across sites) runs on top as a separate "Photo-matched accounts" view. Disable with `--no-identity`.
 - **Watch mode**: `--watch` snapshots the FOUND set after each scan and diffs against the previous run. Combined with `--quiet` and a cron job, you get a daily "what changed" digest — new accounts, removed accounts, follower deltas, bio updates.
@@ -149,7 +149,7 @@ phantom <username> --no-impersonate
 
 | Extension | Output |
 | --- | --- |
-| `.html`, `.htm` | Self-contained HTML report. Card grid for FOUND profiles with profile photo, display name, bio, follower / following / post counts, location, join date, verified / private badges, plus the variant pill and an "Open profile" link. Unknown results in a table below. No external assets — opens in a browser. |
+| `.html`, `.htm` | Self-contained HTML report styled like a modern intelligence dashboard (deep-navy background, Inter + JetBrains Mono, glass-blur surfaces, soft-purple accent — no terminal/matrix aesthetic). Header pill-stats summarise the scan; **every FOUND profile renders as its own card** with photo header, platform badge, verified/private overlay, display name, handle, bio, location/joined/website/language meta chips, full stats row (followers, following, posts, hearts, lists, views, …), and an "Open profile" button. Cards that share a profile photo cross-reference each other with a 📷 badge linking to the related accounts. Unknown results in a clean table below. |
 | `.json` | Single object with `input`, `summary`, `found` (each with a nested `profile` object), `unknown`, and the list of generated variants. |
 | `.md`, `.markdown`, `.txt` | Markdown report with FOUND, UNKNOWN, and a missing-count footer. |
 
@@ -159,18 +159,20 @@ phantom <username> --no-impersonate
 
 | Site | Photo | Display name | Bio | Followers / Following / Posts | Extras |
 | --- | --- | --- | --- | --- | --- |
-| **Twitter / X** | ✓ | ✓ | ✓ | ✓ (followers, friends, statuses) | location, joined date, verified |
-| **TikTok** | ✓ | ✓ | ✓ | ✓ | hearts, region, private, verified |
+| **Twitter / X** | ✓ | ✓ | ✓ | ✓ (followers, friends, statuses) | location, joined date, verified, **lists** (listed_count), **website** (real URL behind t.co) |
+| **TikTok** | ✓ | ✓ | ✓ | ✓ | hearts, region, private, verified, **website** (bioLink) |
 | **Instagram** | depends | depends | depends | ✓ (parsed from og:description) | — |
-| **GitHub** | ✓ | ✓ | ✓ (real bio, not the og fallback) | followers / following / public-repo count | company, location, blog, X handle, pinned-repo names |
+| **GitHub** | ✓ | ✓ | ✓ (real bio, not the og fallback) | followers / following / public-repo count | company, location, blog, X handle (clickable), pinned-repo names |
 | **YouTube** | ✓ (channel art) | ✓ | ✓ | subscriber count → `followers`, video count → `posts` | country → `location`, total views, joined date |
-| **Reddit** (old.reddit profile) | ✓ | ✓ | ✓ | — | post karma, comment karma, total karma, cake-day text |
+| **Reddit** (old.reddit profile) | ✓ | ✓ | ✓ | — | **post karma + comment karma split**, total karma, cake-day text |
 | **Steam** | ✓ | ✓ | — | — | profile level, country flag, game count |
 | **Lichess** | ✓ | ✓ | ✓ | total games played → `posts` | best rating across blitz/rapid/classical, per-perf rating map |
 | **Threads** | ✓ | ✓ (cleaned of `… • Threads, Say more` decoration) | ✓ | followers / posts (parsed from og:description) | — |
 | **Pastebin / Twitch / Letterboxd / Mastodon / Linktree / …** | ✓ | ✓ | ✓ | — | (whatever's in `og:*`) |
 
 Twitter/TikTok use a per-site extractor because they ship no `og:*` tags and embed all profile data in JSON instead. Instagram serves `og:description` of the form *"49 Followers, 176 Following, 1 Posts — …"* which is parsed for counts. GitHub has a fully-SSR'd profile so we read repo names, follower counts, company, location, and blog directly from the HTML. Everything else falls through to a generic OpenGraph reader.
+
+Every extracted bio also runs through a **language detector** (script-based for Arabic/CJK/Cyrillic/Hangul, common-word matching for French/Spanish/Portuguese/Italian/Dutch/German/Turkish). The detected language is rendered as a 🌐 chip on each profile card and feeds into the cluster-level region inference.
 
 ### CLI flags
 
