@@ -109,21 +109,73 @@ _SCRIPT_BLOCKS = [
     ("ru", 0x0400, 0x04FF),
 ]
 
-# When location strings are missing but joined dates ship a timezone, we
-# can at least narrow to a UTC offset. This isn't a country, but with
-# language signal it's enough to pick a region.
-_TZ_HINT_FROM_OFFSET = {
-    -5: "US East Coast / Eastern Caribbean",
-    -8: "US West Coast",
-    0: "UK / West Africa",
-    1: "Western Europe",
-    2: "Central / Eastern Europe",
-    3: "Eastern Europe / Middle East",
-    5: "Central Asia",
-    8: "China / SE Asia",
-    9: "Japan / Korea",
-    10: "Eastern Australia",
+# Common country names — used to normalise location strings like
+# "Tunis, Tunisia" or "Paris, France" into a clean country tag. We only
+# match against words at end-of-string after a comma so that city/region
+# names that *contain* a country word (e.g. "USA Today") don't trigger.
+# Casing-insensitive; multi-word entries first so e.g. "United States"
+# is preferred over a stray "States".
+_COUNTRY_NAMES = (
+    # Multi-word first so the longest match wins.
+    "United Kingdom", "United States", "United Arab Emirates",
+    "Saudi Arabia", "South Africa", "South Korea", "North Korea",
+    "New Zealand", "Czech Republic", "Dominican Republic",
+    "Sri Lanka", "Costa Rica", "Puerto Rico", "Hong Kong",
+    "Ivory Coast", "El Salvador", "Trinidad and Tobago",
+    "Bosnia and Herzegovina", "North Macedonia",
+    "Papua New Guinea",
+    # Single word.
+    "Tunisia", "Algeria", "Morocco", "Egypt", "Libya", "Sudan", "Mauritania",
+    "Senegal", "Nigeria", "Ghana", "Kenya", "Ethiopia", "Tanzania", "Uganda",
+    "Cameroon", "Angola", "Mozambique", "Zimbabwe", "Zambia", "Rwanda",
+    "France", "Germany", "Spain", "Italy", "Portugal", "Belgium",
+    "Netherlands", "Switzerland", "Austria", "Sweden", "Norway", "Denmark",
+    "Finland", "Iceland", "Ireland", "Poland", "Czechia", "Slovakia",
+    "Hungary", "Romania", "Bulgaria", "Greece", "Turkey", "Russia",
+    "Ukraine", "Belarus", "Lithuania", "Latvia", "Estonia",
+    "Serbia", "Croatia", "Slovenia", "Albania", "Kosovo", "Montenegro",
+    "USA", "America", "Canada", "Mexico", "Brazil", "Argentina", "Chile",
+    "Colombia", "Peru", "Venezuela", "Uruguay", "Paraguay", "Bolivia",
+    "Ecuador", "Cuba", "Jamaica", "Haiti",
+    "Iran", "Iraq", "Syria", "Lebanon", "Jordan", "Israel", "Palestine",
+    "Qatar", "Kuwait", "Bahrain", "Oman", "Yemen", "Afghanistan",
+    "Pakistan", "India", "Bangladesh", "Nepal", "Bhutan", "Maldives",
+    "China", "Taiwan", "Japan", "Korea", "Mongolia", "Vietnam", "Laos",
+    "Cambodia", "Thailand", "Malaysia", "Singapore", "Indonesia",
+    "Philippines", "Myanmar",
+    "Australia", "UK", "Britain", "England", "Scotland", "Wales",
+)
+
+_COUNTRY_RE = re.compile(
+    r'(?:^|[,/])\s*(' + "|".join(re.escape(c) for c in _COUNTRY_NAMES) + r')\s*$',
+    re.IGNORECASE,
+)
+_COUNTRY_CANONICAL = {
+    "uk": "United Kingdom", "britain": "United Kingdom",
+    "england": "United Kingdom", "scotland": "United Kingdom",
+    "wales": "United Kingdom", "usa": "United States",
+    "america": "United States", "korea": "South Korea",
+    "czechia": "Czech Republic",
 }
+
+
+def _normalise_country(loc: str) -> Optional[str]:
+    """Pull a clean country name out of a free-form location string.
+
+    "Tunis, Tunisia" → "Tunisia"
+    "Paris, France"  → "France"
+    "London, UK"     → "United Kingdom"
+    "France"         → "France"
+    "Lyon"           → None
+    """
+    if not loc:
+        return None
+    loc = loc.strip()
+    m = _COUNTRY_RE.search(loc)
+    if not m:
+        return None
+    raw = m.group(1).strip()
+    return _COUNTRY_CANONICAL.get(raw.lower(), raw)
 
 
 def detect_lang(text: str) -> Optional[str]:
@@ -153,82 +205,106 @@ def detect_lang(text: str) -> Optional[str]:
 
 
 def _infer_geo(members: list[dict]) -> Optional[GeoHint]:
-    """Aggregate signals from a cluster and produce a region hint.
+    """Best-guess region from real, attributable signals only.
 
-    Inputs (priority order):
-      1. Explicit location strings ("Paris, France", "Tokyo").
-      2. Country fields (YouTube ships a clean 2-letter or full name).
-      3. Bio language detection.
-      4. Joined-date timezone offset (last resort).
+    Priority (only the *highest* available tier is reported):
 
-    Output is intentionally vague — "France" or "Brazil" is fine,
-    "12 rue Lafayette" is not. We also track which signals fired so the
-    confidence can be defended in the report.
+      1. Explicit `location` / `country` / `hometown` fields from one or
+         more profiles. These are the user's own self-reported location.
+         When present, this alone decides the region — language and
+         timezone hints add nothing here, so we don't pollute the
+         output with them.
+      2. Bio language detection. Reported as an explicit language hint
+         ("Arabic-speaking content"), never as a country — French content
+         could come from France, Belgium, Quebec, Tunisia, Morocco, …
+         Confidence is intentionally low.
+
+    Joined-date timezone offsets are deliberately **not** used. UTC+0
+    spans the UK, Iceland, Tunisia, Morocco, Senegal — too coarse to be
+    a useful signal and too easy to get badly wrong.
+
+    Each signal is annotated with its source site(s) so the report can
+    show *why* the region was picked.
     """
-    locations: list[str] = []
+    location_strings: list[tuple[str, str]] = []  # (location, source site)
+    country_strings: list[tuple[str, str]] = []
+    hometowns: list[tuple[str, str]] = []
     bios: list[str] = []
-    tz_offsets: Counter = Counter()
     for m in members:
         prof = m.get("profile") or {}
+        site = m.get("site") or "?"
         if prof.get("location"):
-            locations.append(str(prof["location"]).strip())
+            location_strings.append((str(prof["location"]).strip(), site))
+        if prof.get("country"):
+            country_strings.append((str(prof["country"]).strip(), site))
+        if prof.get("hometown"):
+            hometowns.append((str(prof["hometown"]).strip(), site))
         if prof.get("bio"):
             bios.append(str(prof["bio"]))
-        joined = prof.get("joined")
-        if isinstance(joined, str) and "+" in joined or (
-            isinstance(joined, str) and joined.endswith("Z")
-        ):
-            # ISO offset.
-            mo = re.search(r"([+-])(\d{2}):?(\d{2})$", joined)
-            if mo:
-                hrs = int(mo.group(2))
-                if mo.group(1) == "-":
-                    hrs = -hrs
-                tz_offsets[hrs] += 1
-            elif joined.endswith("Z"):
-                tz_offsets[0] += 1
 
     signals: list[str] = []
-    region: Optional[str] = None
-    confidence = 0.0
 
-    if locations:
-        # Pick the most common location — if all members report it the
-        # same we can be confident.
-        loc_counts = Counter(locations)
+    # ---- Tier 1: explicit location fields ----
+    # Build a vote of country names (extracted from each location) plus
+    # the raw strings. The most-frequent country wins; if no string
+    # contains a country, the most-frequent raw location wins instead.
+    all_locations = location_strings + hometowns + [
+        (c, s) for (c, s) in country_strings
+    ]
+    if all_locations:
+        country_votes: Counter = Counter()
+        country_sources: dict[str, list[str]] = {}
+        for loc, site in all_locations:
+            country = _normalise_country(loc)
+            if country:
+                country_votes[country] += 1
+                country_sources.setdefault(country, []).append(site)
+        if country_votes:
+            top, n = country_votes.most_common(1)[0]
+            srcs = ", ".join(sorted(set(country_sources[top])))
+            signals.append(f"profile country: {top} (via {srcs})")
+            unique_sources = len(set(country_sources[top]))
+            confidence = min(0.7 + 0.1 * unique_sources, 0.95)
+            return GeoHint(region=top, confidence=round(confidence, 2),
+                           signals=signals)
+        # No country word matched — fall back to the most-frequent raw
+        # string. This handles single-word inputs ("Lyon", "Tokyo")
+        # where the country is implicit.
+        loc_counts: Counter = Counter()
+        loc_sources: dict[str, list[str]] = {}
+        for loc, site in all_locations:
+            loc_counts[loc] += 1
+            loc_sources.setdefault(loc, []).append(site)
         top, n = loc_counts.most_common(1)[0]
-        region = top
-        confidence = min(0.6 + 0.1 * n, 0.95)
-        signals.append(f"location string ({n}× '{top}')")
+        srcs = ", ".join(sorted(set(loc_sources[top])))
+        signals.append(f"profile location: {top} (via {srcs})")
+        confidence = min(0.55 + 0.1 * len(set(loc_sources[top])), 0.85)
+        return GeoHint(region=top, confidence=round(confidence, 2),
+                       signals=signals)
 
-    if not region:
-        lang = detect_lang(" ".join(bios))
-        if lang:
-            label = {
-                "en": "English-speaking", "fr": "France / Francophone",
-                "es": "Spanish-speaking", "de": "German-speaking",
-                "pt": "Portuguese-speaking", "it": "Italy / Italian-speaking",
-                "nl": "Dutch-speaking", "ar": "Arabic-speaking",
-                "ja": "Japan", "zh": "China / Chinese-speaking",
-                "ko": "Korea", "ru": "Russia / Russian-speaking",
-                "tr": "Turkey",
-            }.get(lang, lang)
-            region = label
-            confidence = 0.5
-            signals.append(f"bio language ({lang})")
+    # ---- Tier 2: bio language (presented as a language hint, NOT a
+    # country) ----
+    lang = detect_lang(" ".join(bios)) if bios else None
+    if lang:
+        label = {
+            "en": "English-speaking content",
+            "fr": "French-speaking content",
+            "es": "Spanish-speaking content",
+            "de": "German-speaking content",
+            "pt": "Portuguese-speaking content",
+            "it": "Italian-speaking content",
+            "nl": "Dutch-speaking content",
+            "ar": "Arabic-speaking content",
+            "ja": "Japanese-speaking content",
+            "zh": "Chinese-speaking content",
+            "ko": "Korean-speaking content",
+            "ru": "Russian-speaking content",
+            "tr": "Turkish-speaking content",
+        }.get(lang, f"{lang}-language content")
+        signals.append(f"bio language ({lang}) — language only, not a country")
+        return GeoHint(region=label, confidence=0.30, signals=signals)
 
-    if tz_offsets:
-        offset, _ = tz_offsets.most_common(1)[0]
-        tz_label = _TZ_HINT_FROM_OFFSET.get(offset)
-        if tz_label:
-            signals.append(f"joined-date tz UTC{offset:+d} → {tz_label}")
-            if not region:
-                region = tz_label
-                confidence = 0.35
-
-    if not signals:
-        return None
-    return GeoHint(region=region, confidence=round(confidence, 2), signals=signals)
+    return None
 
 
 # ---------------------------------------------------------------------------

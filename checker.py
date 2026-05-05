@@ -861,6 +861,103 @@ def print_compact(
 # Export
 # ---------------------------------------------------------------------------
 
+def _profile_dedup_key_parts(profile: dict, url: str, final_url: Optional[str]) -> Optional[tuple]:
+    """Return a key identifying *which profile* this result is for, or
+    None when we can't tell. Two FOUND results with the same key on the
+    same site are the same person reached via different URL aliases —
+    a Facebook account exposed at `/john.smith`, `/john-smith`, and
+    `/johnsmith` returns the same profile body for all three.
+
+    Priority:
+      1. Canonical URL the platform itself ships in the page (`og:url`
+         normalised → `profile.canonical_url`) — strongest signal.
+      2. The post-redirect final URL — works for sites that 30x to the
+         normalised path.
+      3. (display_name, photo) — same person if both match exactly.
+    """
+    p = profile or {}
+    canonical = p.get("canonical_url")
+    if canonical:
+        return ("canonical", canonical.lower())
+    final = (final_url or "").lower().rstrip("/").split("?", 1)[0]
+    own = (url or "").lower().rstrip("/").split("?", 1)[0]
+    if final and final != own:
+        return ("final", final)
+    name = (p.get("display_name") or "").strip().lower()
+    photo = (p.get("photo") or "").strip()
+    if name and photo:
+        return ("name+photo", name, photo)
+    return None
+
+
+def _dedupe_same_site_profiles(found: list[CheckResult]) -> list[CheckResult]:
+    """Merge FOUND results that point at the same profile on the same
+    site — see `_profile_dedup_key_parts` for the matching rule.
+
+    Kept entry is the one with the richest profile dict; merged variants
+    get stashed on `profile["aliases"]` so the report can show every
+    handle pattern that resolved to this profile.
+    """
+    by_key: dict[tuple, list[CheckResult]] = {}
+    untouched: list[CheckResult] = []
+    for r in found:
+        key = _profile_dedup_key_parts(r.profile, r.url, r.final_url)
+        if key is None:
+            untouched.append(r)
+            continue
+        by_key.setdefault((r.site, *key), []).append(r)
+
+    merged: list[CheckResult] = []
+    for group in by_key.values():
+        if len(group) == 1:
+            merged.append(group[0])
+            continue
+        primary = max(
+            group,
+            key=lambda r: (len(r.profile or {}), -len(r.url or "")),
+        )
+        others = [g for g in group if g is not primary]
+        primary.profile = {**(primary.profile or {})}
+        primary.profile["aliases"] = [
+            {"variant": o.variant, "url": o.url} for o in others
+        ]
+        merged.append(primary)
+    return untouched + merged
+
+
+def _dedupe_same_site_dicts(found_dicts: list[dict]) -> list[dict]:
+    """Dict-level twin of `_dedupe_same_site_profiles`. Used before
+    identity correlation so the photo-match cluster doesn't inflate
+    when a single profile is reached via several URL patterns."""
+    by_key: dict[tuple, list[dict]] = {}
+    untouched: list[dict] = []
+    for d in found_dicts:
+        key = _profile_dedup_key_parts(
+            d.get("profile") or {}, d.get("url") or "", d.get("final_url"),
+        )
+        if key is None:
+            untouched.append(d)
+            continue
+        by_key.setdefault((d.get("site"), *key), []).append(d)
+
+    merged: list[dict] = []
+    for group in by_key.values():
+        if len(group) == 1:
+            merged.append(group[0])
+            continue
+        primary = max(
+            group,
+            key=lambda d: (len(d.get("profile") or {}), -len(d.get("url") or "")),
+        )
+        others = [g for g in group if g is not primary]
+        primary["profile"] = {**(primary.get("profile") or {})}
+        primary["profile"]["aliases"] = [
+            {"variant": o.get("variant"), "url": o.get("url")} for o in others
+        ]
+        merged.append(primary)
+    return untouched + merged
+
+
 def _flatten(grouped: list[tuple[str, list[CheckResult]]]):
     found, unknown = [], []
     missing_count = 0
@@ -872,6 +969,7 @@ def _flatten(grouped: list[tuple[str, list[CheckResult]]]):
                 missing_count += 1
             else:
                 unknown.append(r)
+    found = _dedupe_same_site_profiles(found)
     sort_key = lambda r: (-r.reliability, r.site.lower(), r.variant or "")
     found.sort(key=sort_key)
     unknown.sort(key=sort_key)
@@ -1571,8 +1669,12 @@ def _html_card(r: CheckResult, photo_match: Optional[list] = None) -> str:
     chips = []
     if p.get("location"):
         chips.append(f'📍 {html.escape(p["location"])}')
+    if p.get("hometown") and p.get("hometown") != p.get("location"):
+        chips.append(f'🏠 from {html.escape(p["hometown"])}')
     if p.get("company"):
         chips.append(f'🏢 {html.escape(p["company"])}')
+    if p.get("education"):
+        chips.append(f'🎓 {html.escape(p["education"])}')
     joined = _format_joined(p.get("joined")) or p.get("joined")
     if joined:
         chips.append(f'📅 {html.escape(str(joined))}')
@@ -1654,6 +1756,22 @@ def _html_card(r: CheckResult, photo_match: Optional[list] = None) -> str:
         f'target="_blank" rel="noopener">Open profile →</a>'
     )
 
+    # Same-profile aliases: when several URL variants resolved to the
+    # same profile (Facebook accepts `/john.smith` and `/johnsmith` for
+    # the same person), surface them as small chips so the user can see
+    # which patterns matched without each one creating a duplicate card.
+    aliases_html = ""
+    if p.get("aliases"):
+        chips = "".join(
+            f'<span class="alt-site">@{html.escape(a.get("variant") or "")}</span>'
+            for a in p["aliases"][:6]
+        )
+        aliases_html = (
+            '<div class="alt-sites-row">'
+            '<span class="multi-badge">also at</span>'
+            f"{chips}</div>"
+        )
+
     # Photo-match: small badge + chips linking to the other accounts that
     # share this profile photo. Each account still renders its own card;
     # this is just a cross-reference annotation.
@@ -1678,6 +1796,7 @@ def _html_card(r: CheckResult, photo_match: Optional[list] = None) -> str:
         f"{meta_row}"
         f"{pinned_html}"
         f"{stats_row}"
+        f"{aliases_html}"
         f"{photo_match_html}"
         f'<div class="footer">{variant_pill}{open_link}</div>'
         "</div>"
@@ -2185,6 +2304,9 @@ def main(argv: Optional[list[str]] = None) -> int:
             for r in rs:
                 if r.exists is True:
                     found_dicts.append(asdict(r))
+        # Dedupe before correlation so a single profile reached via
+        # several URL aliases doesn't inflate the photo-match cluster.
+        found_dicts = _dedupe_same_site_dicts(found_dicts)
         overall, clusters = await build_overall_and_clusters(found_dicts)
         return results, overall, clusters
 

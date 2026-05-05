@@ -588,6 +588,193 @@ def extract_threads(body: str, username: str) -> dict:
     return info
 
 
+# ---------------------------------------------------------------------------
+# Facebook
+#
+# Facebook accepts several URL patterns for the *same* profile (no dot,
+# dotted, hyphenated) and returns 200 for each. To dedupe, we read
+# `og:url`, which is the user's canonical profile URL — identical across
+# the alias paths. We also normalise the display name (strip the "| ...
+# | Facebook" suffix) and look for the public profile facts that
+# sometimes appear in the SSR'd HTML for the legacy /m/-shaped renders
+# we get with our older Chrome User-Agent: "Lives in", "From", "Works
+# at", "Studied at".
+# ---------------------------------------------------------------------------
+
+_FB_LIVES_RE = re.compile(
+    r'(?:Lives in|Habite à|Vit à)\s+([^<\n]{2,80}?)(?:\s*<|\s*\|\s*|$)',
+    re.IGNORECASE,
+)
+_FB_FROM_RE = re.compile(
+    r'(?:From|De|Originaire de)\s+([A-Z][^<\n]{2,80}?)(?:\s*<|\s*\|\s*|$)',
+)
+_FB_WORKS_RE = re.compile(
+    r'(?:Works at|Travaille (?:à|chez|au))\s+([^<\n]{2,80}?)(?:\s*<|\s*\|\s*|$)',
+    re.IGNORECASE,
+)
+_FB_STUDIED_RE = re.compile(
+    r'(?:Studied at|A étudié à)\s+([^<\n]{2,80}?)(?:\s*<|\s*\|\s*|$)',
+    re.IGNORECASE,
+)
+
+
+def _norm_fb_url(u: str) -> str:
+    """Normalise a Facebook profile URL for dedup: lower-case, strip
+    query/fragment, drop trailing slash, ensure www host."""
+    if not u:
+        return u
+    u = u.strip().lower()
+    u = re.sub(r'^https?://(?:m\.|web\.|mbasic\.)?facebook\.com', 'https://www.facebook.com', u)
+    u = u.split('?', 1)[0].split('#', 1)[0].rstrip('/')
+    return u
+
+
+def extract_facebook(body: str, username: str) -> dict:
+    info = extract_meta(body, f"https://www.facebook.com/{username}")
+    # Boilerplate og:description ("X est sur Facebook. Inscrivez-vous…") —
+    # not a real bio, drop it.
+    bio = info.get("bio") or ""
+    if re.search(r"(?:is on Facebook|est sur Facebook|en Facebook|على فيسبوك)", bio):
+        info.pop("bio", None)
+    # Display name: og:title is "Mohamed Mahemli" or "Mohamed Mahemli | Facebook".
+    title = info.get("display_name") or ""
+    title = re.sub(r"\s*\|\s*Facebook\s*$", "", title).strip()
+    if title:
+        info["display_name"] = title
+    # Canonical profile URL — the same across alias paths, so we use it
+    # to dedupe `mohamedmahemli` / `mohamed.mahemli` / `mohamed-mahemli`.
+    meta = _meta_map(body)
+    og_url = meta.get("og:url")
+    if og_url:
+        info["canonical_url"] = _norm_fb_url(og_url)
+
+    # Public profile facts. Facebook only ships these on the legacy SSR
+    # render — best-effort, no-op if missing.
+    m = _FB_LIVES_RE.search(body)
+    if m:
+        info["location"] = unescape(m.group(1).strip())
+    m = _FB_FROM_RE.search(body)
+    if m and not info.get("hometown"):
+        info["hometown"] = unescape(m.group(1).strip())
+    m = _FB_WORKS_RE.search(body)
+    if m:
+        info["company"] = unescape(m.group(1).strip())
+    m = _FB_STUDIED_RE.search(body)
+    if m:
+        info["education"] = unescape(m.group(1).strip())
+    return info
+
+
+# ---------------------------------------------------------------------------
+# Behance
+#
+# Behance ships a SSR'd profile JSON in `<script id="beconfig-store_state">`
+# (older) or in inline `window.__INITIAL_STATE__` / `<script
+# id="__NEXT_DATA__">` (newer). All three have the same
+# `profile.owner.user` shape with location, occupation, company, social
+# links — fully public, no auth.
+# ---------------------------------------------------------------------------
+
+_BEHANCE_BLOB_RES = [
+    re.compile(
+        r'<script[^>]*\bid=["\']beconfig-store_state["\'][^>]*>(.*?)</script>',
+        re.DOTALL,
+    ),
+    re.compile(
+        r'<script[^>]*\bid=["\']__NEXT_DATA__["\'][^>]*>(.*?)</script>',
+        re.DOTALL,
+    ),
+]
+
+
+def _walk_for_user(node, want_username: str):
+    """Depth-first walk a parsed JSON blob looking for a Behance user
+    object whose username matches. Returns the dict or None."""
+    if isinstance(node, dict):
+        if (node.get("username") or "").lower() == want_username.lower():
+            return node
+        # Behance has multiple shapes; check the most common keys first.
+        for key in ("owner", "user", "profile", "data"):
+            child = node.get(key)
+            if isinstance(child, (dict, list)):
+                hit = _walk_for_user(child, want_username)
+                if hit:
+                    return hit
+        for v in node.values():
+            if isinstance(v, (dict, list)):
+                hit = _walk_for_user(v, want_username)
+                if hit:
+                    return hit
+    elif isinstance(node, list):
+        for v in node:
+            hit = _walk_for_user(v, want_username)
+            if hit:
+                return hit
+    return None
+
+
+def extract_behance(body: str, username: str) -> dict:
+    info = extract_meta(body, f"https://www.behance.net/{username}")
+    user = None
+    for rx in _BEHANCE_BLOB_RES:
+        m = rx.search(body)
+        if not m:
+            continue
+        try:
+            data = json.loads(m.group(1))
+        except Exception:
+            continue
+        user = _walk_for_user(data, username)
+        if user:
+            break
+    if not user:
+        return info
+
+    name = " ".join(
+        x for x in (user.get("first_name"), user.get("last_name")) if x
+    ).strip() or user.get("display_name")
+    if name:
+        info["display_name"] = name
+    if user.get("occupation"):
+        info["bio"] = user["occupation"]
+    # Location: Behance ships `city` + `state` + `country` separately
+    # AND a pre-formatted `location` string. The pre-formatted one is
+    # what shows on the profile, so prefer it.
+    loc = user.get("location")
+    if loc:
+        info["location"] = str(loc).strip()
+    elif user.get("city") or user.get("country"):
+        info["location"] = ", ".join(
+            x for x in (user.get("city"), user.get("state"), user.get("country")) if x
+        )
+    if user.get("country"):
+        info["country"] = str(user["country"]).strip()
+    if user.get("company"):
+        info["company"] = str(user["company"]).strip()
+    stats = user.get("stats") or {}
+    if "followers" in stats:
+        info["followers"] = int(stats["followers"])
+    if "following" in stats:
+        info["following"] = int(stats["following"])
+    if "appreciations" in stats:
+        info["hearts"] = int(stats["appreciations"])
+    if "views" in stats:
+        info["views"] = int(stats["views"])
+    if "project_views" in stats:
+        info["views"] = int(stats["project_views"])
+    # Social links — pull a website if present.
+    for link in user.get("social_links") or []:
+        if isinstance(link, dict) and link.get("url"):
+            kind = (link.get("service_name") or "").lower()
+            if kind in ("website", "personal", "portfolio") and "website" not in info:
+                info["website"] = link["url"]
+            elif kind == "twitter" and not info.get("twitter_handle"):
+                handle = link["url"].rstrip("/").rsplit("/", 1)[-1].lstrip("@")
+                if handle:
+                    info["twitter_handle"] = handle
+    return info
+
+
 _PER_SITE = {
     "Twitter": extract_twitter,
     "TikTok": extract_tiktok,
@@ -598,6 +785,8 @@ _PER_SITE = {
     "Steam": extract_steam,
     "Lichess": extract_lichess,
     "Threads": extract_threads,
+    "Facebook": extract_facebook,
+    "Behance": extract_behance,
 }
 
 
