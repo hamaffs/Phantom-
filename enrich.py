@@ -648,6 +648,20 @@ def extract_facebook(body: str, username: str) -> dict:
     if og_url:
         info["canonical_url"] = _norm_fb_url(og_url)
 
+    # Facebook's app-deep-link tags expose the numeric profile ID, which
+    # is the bullet-proof identity key — same value regardless of how
+    # many vanity URL aliases the profile uses. Pull from `al:ios:url`
+    # (`fb://profile/<id>`) or `al:android:url`.
+    for key in ("al:ios:url", "al:android:url"):
+        v = meta.get(key) or ""
+        m = re.search(r'fb://(?:profile|page|profile_tabs|page_tabs)/(\d+)', v)
+        if m:
+            info["fb_profile_id"] = m.group(1)
+            # Compose a stable canonical_url if og:url didn't fire so the
+            # generic dedup picks up the same ID across alias paths.
+            info.setdefault("canonical_url", f"fb://profile/{m.group(1)}")
+            break
+
     # Public profile facts. Facebook only ships these on the legacy SSR
     # render — best-effort, no-op if missing.
     m = _FB_LIVES_RE.search(body)

@@ -150,12 +150,80 @@ _COUNTRY_RE = re.compile(
     r'(?:^|[,/])\s*(' + "|".join(re.escape(c) for c in _COUNTRY_NAMES) + r')\s*$',
     re.IGNORECASE,
 )
+# Looser variant: country word appearing anywhere in the string,
+# bounded by start/whitespace/punctuation. Used for soft hints (work
+# location, school name, free-form bio location) where the country
+# isn't necessarily at the end of the string. Not used for explicit
+# location fields — a 200-char bio mentioning "I love France" should
+# not be treated as the user living there.
+_COUNTRY_LOOSE_RE = re.compile(
+    r'(?<![A-Za-z])(' + "|".join(re.escape(c) for c in _COUNTRY_NAMES) + r')(?![A-Za-z])',
+    re.IGNORECASE,
+)
 _COUNTRY_CANONICAL = {
     "uk": "United Kingdom", "britain": "United Kingdom",
     "england": "United Kingdom", "scotland": "United Kingdom",
     "wales": "United Kingdom", "usa": "United States",
     "america": "United States", "korea": "South Korea",
     "czechia": "Czech Republic",
+}
+
+# City → country lookup for the major cities most likely to appear in a
+# work/school name without an explicit country. Conservative list —
+# only cities whose name is unambiguous (no two cities share it). This
+# keeps "Lives in Springfield" or "Works at Cambridge" from being
+# silently mapped to a country.
+_CITY_TO_COUNTRY = {
+    "tunis": "Tunisia", "casablanca": "Morocco", "rabat": "Morocco",
+    "marrakech": "Morocco", "fes": "Morocco", "fès": "Morocco",
+    "algiers": "Algeria", "alger": "Algeria", "oran": "Algeria",
+    "cairo": "Egypt", "alexandria": "Egypt",
+    "tripoli": "Libya", "lagos": "Nigeria", "abuja": "Nigeria",
+    "nairobi": "Kenya", "addis ababa": "Ethiopia",
+    "dakar": "Senegal", "abidjan": "Ivory Coast",
+    "johannesburg": "South Africa", "cape town": "South Africa",
+    "paris": "France", "lyon": "France", "marseille": "France",
+    "toulouse": "France", "nice": "France", "bordeaux": "France",
+    "berlin": "Germany", "munich": "Germany", "hamburg": "Germany",
+    "frankfurt": "Germany", "köln": "Germany", "cologne": "Germany",
+    "madrid": "Spain", "barcelona": "Spain", "valencia": "Spain",
+    "rome": "Italy", "milan": "Italy", "naples": "Italy",
+    "lisbon": "Portugal", "porto": "Portugal",
+    "amsterdam": "Netherlands", "rotterdam": "Netherlands",
+    "brussels": "Belgium", "antwerp": "Belgium",
+    "vienna": "Austria", "zurich": "Switzerland", "geneva": "Switzerland",
+    "stockholm": "Sweden", "oslo": "Norway", "copenhagen": "Denmark",
+    "helsinki": "Finland", "warsaw": "Poland", "kraków": "Poland",
+    "prague": "Czech Republic", "budapest": "Hungary", "athens": "Greece",
+    "istanbul": "Turkey", "ankara": "Turkey",
+    "moscow": "Russia", "saint petersburg": "Russia", "kiev": "Ukraine",
+    "kyiv": "Ukraine",
+    "london": "United Kingdom", "manchester": "United Kingdom",
+    "edinburgh": "United Kingdom", "glasgow": "United Kingdom",
+    "dublin": "Ireland",
+    "new york": "United States", "los angeles": "United States",
+    "chicago": "United States", "san francisco": "United States",
+    "boston": "United States", "seattle": "United States",
+    "miami": "United States", "houston": "United States",
+    "toronto": "Canada", "vancouver": "Canada", "montreal": "Canada",
+    "mexico city": "Mexico",
+    "são paulo": "Brazil", "rio de janeiro": "Brazil",
+    "buenos aires": "Argentina", "santiago": "Chile",
+    "tokyo": "Japan", "osaka": "Japan", "kyoto": "Japan",
+    "seoul": "South Korea", "beijing": "China", "shanghai": "China",
+    "hong kong": "Hong Kong",
+    "bangkok": "Thailand", "singapore": "Singapore", "kuala lumpur": "Malaysia",
+    "jakarta": "Indonesia", "manila": "Philippines",
+    "delhi": "India", "mumbai": "India", "bangalore": "India",
+    "karachi": "Pakistan", "islamabad": "Pakistan", "lahore": "Pakistan",
+    "dhaka": "Bangladesh",
+    "tehran": "Iran", "baghdad": "Iraq", "damascus": "Syria",
+    "beirut": "Lebanon", "amman": "Jordan",
+    "tel aviv": "Israel", "jerusalem": "Israel",
+    "doha": "Qatar", "dubai": "United Arab Emirates",
+    "abu dhabi": "United Arab Emirates", "kuwait city": "Kuwait",
+    "sydney": "Australia", "melbourne": "Australia",
+    "auckland": "New Zealand",
 }
 
 
@@ -166,16 +234,39 @@ def _normalise_country(loc: str) -> Optional[str]:
     "Paris, France"  → "France"
     "London, UK"     → "United Kingdom"
     "France"         → "France"
-    "Lyon"           → None
+    "Lyon"           → "France"   (city → country lookup)
+    "Springfield"    → None       (ambiguous, no lookup)
     """
     if not loc:
         return None
     loc = loc.strip()
     m = _COUNTRY_RE.search(loc)
-    if not m:
+    if m:
+        raw = m.group(1).strip()
+        return _COUNTRY_CANONICAL.get(raw.lower(), raw)
+    # City fallback: look at the first comma-separated token.
+    head = loc.split(",", 1)[0].strip().lower()
+    if head in _CITY_TO_COUNTRY:
+        return _CITY_TO_COUNTRY[head]
+    return None
+
+
+def _country_from_soft(s: str) -> Optional[str]:
+    """Extract a country from a soft hint (work title, school name,
+    free-form text). Tries a full country word first, then any city
+    word from the curated lookup. Returns None when nothing matches.
+    """
+    if not s:
         return None
-    raw = m.group(1).strip()
-    return _COUNTRY_CANONICAL.get(raw.lower(), raw)
+    m = _COUNTRY_LOOSE_RE.search(s)
+    if m:
+        raw = m.group(1).strip()
+        return _COUNTRY_CANONICAL.get(raw.lower(), raw)
+    low = s.lower()
+    for city, country in _CITY_TO_COUNTRY.items():
+        if re.search(rf'(?<![A-Za-z]){re.escape(city)}(?![A-Za-z])', low):
+            return country
+    return None
 
 
 def detect_lang(text: str) -> Optional[str]:
@@ -229,6 +320,11 @@ def _infer_geo(members: list[dict]) -> Optional[GeoHint]:
     location_strings: list[tuple[str, str]] = []  # (location, source site)
     country_strings: list[tuple[str, str]] = []
     hometowns: list[tuple[str, str]] = []
+    # Soft hints — strings where a country name *might* appear but the
+    # whole string isn't itself a location (e.g. Facebook's "Works at
+    # Google Tunis" → a country word inside an employer name). Used as
+    # a country *fallback* only, never as a raw location label.
+    soft_hints: list[tuple[str, str]] = []
     bios: list[str] = []
     for m in members:
         prof = m.get("profile") or {}
@@ -239,43 +335,96 @@ def _infer_geo(members: list[dict]) -> Optional[GeoHint]:
             country_strings.append((str(prof["country"]).strip(), site))
         if prof.get("hometown"):
             hometowns.append((str(prof["hometown"]).strip(), site))
+        for k in ("company", "education"):
+            v = prof.get(k)
+            if v:
+                soft_hints.append((str(v).strip(), f"{site} {k}"))
+        # Some extractors (extract_facebook) ship a curated list of
+        # geo-relevant strings under `geo_strings`; treat those the
+        # same as soft hints.
+        for v in prof.get("geo_strings") or []:
+            soft_hints.append((str(v).strip(), site))
         if prof.get("bio"):
             bios.append(str(prof["bio"]))
 
     signals: list[str] = []
+    country_votes: Counter = Counter()
+    country_sources: dict[str, list[str]] = {}
 
     # ---- Tier 1: explicit location fields ----
-    # Build a vote of country names (extracted from each location) plus
-    # the raw strings. The most-frequent country wins; if no string
-    # contains a country, the most-frequent raw location wins instead.
+    # Build a vote of country names (extracted from each location).
+    # Explicit fields are weighted strongly: the city→country mapping
+    # in `_normalise_country` only kicks in for a clean head token, so
+    # we trust whatever it returns.
     all_locations = location_strings + hometowns + [
         (c, s) for (c, s) in country_strings
     ]
+    for loc, site in all_locations:
+        country = _normalise_country(loc)
+        if country:
+            country_votes[country] += 1
+            country_sources.setdefault(country, []).append(site)
+
+    # ---- Tier 1b: soft hints (Facebook "Works at <X>" / "Studied at
+    # <Y>" — country names buried inside an employer or school name).
+    # Each hint counts as half a vote so an explicit location always
+    # wins over a soft hint when both are present, but a soft hint
+    # alone can still surface a country.
+    soft_country_sources: dict[str, list[str]] = {}
+    for hint, src in soft_hints:
+        country = _country_from_soft(hint)
+        if country:
+            soft_country_sources.setdefault(country, []).append(src)
+
+    if country_votes:
+        top, n = country_votes.most_common(1)[0]
+        srcs = ", ".join(sorted(set(country_sources[top])))
+        signals.append(f"profile country: {top} (via {srcs})")
+        # Co-mention boosts confidence: "Tunisia" appears as both an
+        # explicit location and inside a work/school name.
+        if top in soft_country_sources:
+            extra = ", ".join(sorted(set(soft_country_sources[top])))
+            signals.append(f"corroborated by work/school ({extra})")
+        unique_sources = len(set(country_sources[top]))
+        confidence = min(0.7 + 0.1 * unique_sources, 0.95)
+        # Surface OTHER countries that also appeared (e.g. user lived
+        # in two places). Lower-vote candidates are listed but don't
+        # change the headline region.
+        other_countries = [c for c, _ in country_votes.most_common()[1:]]
+        if other_countries:
+            signals.append(
+                "also mentioned: " + ", ".join(other_countries)
+            )
+        return GeoHint(region=top, confidence=round(confidence, 2),
+                       signals=signals)
+
+    # No explicit location with a clean country. Try soft hints alone.
+    if soft_country_sources:
+        # Pick the country with the most independent sources.
+        ranked = sorted(
+            soft_country_sources.items(),
+            key=lambda kv: -len(set(kv[1])),
+        )
+        top, srcs = ranked[0]
+        signals.append(
+            f"work/school country: {top} (via {', '.join(sorted(set(srcs)))})"
+        )
+        if len(ranked) > 1:
+            signals.append(
+                "also mentioned: " + ", ".join(c for c, _ in ranked[1:])
+            )
+        return GeoHint(region=top, confidence=0.55, signals=signals)
+
+    # No country word matched — fall back to the most-frequent raw
+    # location string. This handles inputs like "Lyon" that didn't
+    # match either the country list or the city map.
     if all_locations:
-        country_votes: Counter = Counter()
-        country_sources: dict[str, list[str]] = {}
-        for loc, site in all_locations:
-            country = _normalise_country(loc)
-            if country:
-                country_votes[country] += 1
-                country_sources.setdefault(country, []).append(site)
-        if country_votes:
-            top, n = country_votes.most_common(1)[0]
-            srcs = ", ".join(sorted(set(country_sources[top])))
-            signals.append(f"profile country: {top} (via {srcs})")
-            unique_sources = len(set(country_sources[top]))
-            confidence = min(0.7 + 0.1 * unique_sources, 0.95)
-            return GeoHint(region=top, confidence=round(confidence, 2),
-                           signals=signals)
-        # No country word matched — fall back to the most-frequent raw
-        # string. This handles single-word inputs ("Lyon", "Tokyo")
-        # where the country is implicit.
         loc_counts: Counter = Counter()
         loc_sources: dict[str, list[str]] = {}
         for loc, site in all_locations:
             loc_counts[loc] += 1
             loc_sources.setdefault(loc, []).append(site)
-        top, n = loc_counts.most_common(1)[0]
+        top, _ = loc_counts.most_common(1)[0]
         srcs = ", ".join(sorted(set(loc_sources[top])))
         signals.append(f"profile location: {top} (via {srcs})")
         confidence = min(0.55 + 0.1 * len(set(loc_sources[top])), 0.85)

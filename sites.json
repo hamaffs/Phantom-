@@ -142,7 +142,14 @@
     "category": "social",
     "url": "https://x.com/{username}",
     "method": "message",
-    "presence_text": ["\"screen_name\":\"{username}\""],
+    "presence_text": [
+      "\"screen_name\":\"{username}\"",
+      "(@{username}) / X<",
+      "(@{username}) on X<",
+      "(@{username}) | X<",
+      "<meta property=\"og:url\" content=\"https://x.com/{username}\"",
+      "<meta property=\"og:url\" content=\"https://twitter.com/{username}\""
+    ],
     "absence_text": ["This account doesn't exist", "doesn’t exist", "Try searching for another"],
     "protection": ["tls_fingerprint"],
     "reliability": 85
@@ -270,7 +277,15 @@
     "category": "gaming",
     "url": "https://m.twitch.tv/{username}",
     "method": "message",
-    "presence_text": ["\"login\":\"{username}\"", "twitch.tv/{username}"],
+    "presence_text": [
+      "\"login\":\"{username}\"",
+      "twitch.tv/{username}",
+      "<title>{username} - Twitch</title>",
+      "<meta name=\"twitter:url\" content=\"https://m.twitch.tv/{username}\"",
+      "<meta name=\"twitter:url\" content=\"https://www.twitch.tv/{username}\"",
+      "<meta property=\"og:url\" content=\"https://m.twitch.tv/{username}\"",
+      "<meta property=\"og:url\" content=\"https://www.twitch.tv/{username}\""
+    ],
     "absence_text": ["Sorry. Unless you've got a time machine"],
     "protection": ["tls_fingerprint"],
     "reliability": 80
