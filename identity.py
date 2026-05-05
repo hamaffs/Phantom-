@@ -573,6 +573,55 @@ def correlate(
 # Top-level entry
 # ---------------------------------------------------------------------------
 
+def aggregate_all(found: list[dict]) -> Optional[IdentityCluster]:
+    """One identity summary built from *every* FOUND result.
+
+    The per-cluster view (`build_identities`) only fires when photos
+    match across platforms, which leaves single-platform users with
+    nothing to show. This function instead asks: what can we say about
+    *the person whose accounts these are*, treating every FOUND result
+    as a contribution?
+
+    Behaviour:
+    - Photos are deduped (kept as-is — no phash needed; the URL set is
+      the union of all profile pics).
+    - Display name is the most common normalized name across results.
+    - Locations are vote-counted across every result's `location` field.
+    - Bios from every result feed the language/geo inference.
+    - Followers/following/posts are summed (best-effort: a Twitter
+      account with 1k followers and an Instagram with 50 followers
+      shows 1050 — meaningful as "reach").
+
+    Returns None if `found` is empty, otherwise one cluster with
+    member_indexes = range(len(found)).
+    """
+    if not found:
+        return None
+    indexes = list(range(len(found)))
+    photos_by_index = {
+        i: (r.get("profile") or {}).get("photo")
+        for i, r in enumerate(found)
+        if (r.get("profile") or {}).get("photo")
+    }
+    cluster = _aggregate(indexes, found, photos_by_index, [])
+    # Confidence here means "how confident are we that we know who this
+    # person is", not "how confident are we that these are the same
+    # person" — the latter is what the per-cluster confidence tracks.
+    # We use number of contributing platforms as a rough signal: more
+    # platforms → more agreement → higher confidence.
+    n = len(indexes)
+    if n >= 5:
+        cluster.confidence = 0.85
+    elif n >= 3:
+        cluster.confidence = 0.7
+    elif n == 2:
+        cluster.confidence = 0.55
+    else:
+        cluster.confidence = 0.4
+    cluster.rationale = [f"aggregated from {n} FOUND account(s)"]
+    return cluster
+
+
 async def build_identities(found: list[dict]) -> list[IdentityCluster]:
     """High-level: hash each FOUND profile photo and produce clusters.
 
@@ -585,3 +634,27 @@ async def build_identities(found: list[dict]) -> list[IdentityCluster]:
     photo_urls = [(r.get("profile") or {}).get("photo") for r in found]
     phashes = await fetch_photo_hashes(photo_urls)
     return correlate(found, phashes)
+
+
+async def build_overall_and_clusters(
+    found: list[dict],
+) -> tuple[Optional[IdentityCluster], list[IdentityCluster]]:
+    """Run both: an overall aggregate AND per-photo clusters.
+
+    Returns (overall, clusters). The overall is built without needing
+    photo hashes (it merges everything regardless), so it works for
+    users like the friend in your test — Twitter + GitHub + nothing
+    else, where photo correlation can't fire.
+
+    The per-photo clusters are still produced as a secondary view: when
+    photos match across 2+ platforms we surface "definitely same person
+    on these N sites", which adds verification on top of the global
+    aggregate.
+    """
+    if not found:
+        return None, []
+    photo_urls = [(r.get("profile") or {}).get("photo") for r in found]
+    phashes = await fetch_photo_hashes(photo_urls)
+    overall = aggregate_all(found)
+    clusters = correlate(found, phashes)
+    return overall, clusters

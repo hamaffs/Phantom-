@@ -34,7 +34,7 @@ import aiohttp
 from aiohttp import ClientSession, ClientTimeout, TCPConnector
 
 from enrich import extract_profile
-from identity import build_identities
+from identity import build_overall_and_clusters
 from variants import generate as generate_variants
 from watch import (
     Snapshot, diff as compute_diff, load_history, render_diff_terminal,
@@ -729,7 +729,11 @@ def _format_row(r: CheckResult, color: bool, show_variant: bool) -> str:
     `--exact`, it's just noise.
     """
     site = f"{_c(color,'bold')}{r.site:<14}{_c(color,'reset')}"
-    target = r.final_url or r.url
+    # Show the canonical URL (the one we requested) — that's what reliably
+    # opens the profile when clicked. Some sites (Instagram) drop the www
+    # subdomain on redirect, and the redirected form trips their bot
+    # detection when opened cold from a browser.
+    target = r.url
     url_part = f"{_c(color,'dim')}{target}{_c(color,'reset')}"
     note_parts = []
     if r.status is not None:
@@ -745,37 +749,56 @@ def _format_row(r: CheckResult, color: bool, show_variant: bool) -> str:
     return f"  {site} {url_part}{note}{tag}"
 
 
-def _print_identity_summary(clusters, color: bool) -> None:
-    """One-line-per-person view of the identity clusters.
+def _print_identity_summary(overall, clusters, color: bool) -> None:
+    """Print the overall identity summary + any photo-matched groups.
 
-    Only prints multi-member clusters — singletons are noise (every
-    FOUND row would otherwise print as its own "person").
+    The overall summary always prints when there's at least one FOUND;
+    that's the bit that surfaces a region for users whose accounts
+    don't share a photo. Photo-matched clusters print below as a
+    secondary "definitely the same person on these sites" view.
     """
-    multi = [c for c in clusters if len(c.member_indexes) > 1]
-    if not multi:
-        return
     g, b, x, dim, accent = (
         _c(color, "green"), _c(color, "bold"), _c(color, "reset"),
         _c(color, "dim"), _c(color, "yellow"),
     )
-    print(f"\n{b}[ IDENTITY ]{x}{b} {len(multi)}{x}  "
-          f"{dim}(matched across multiple sites){x}")
-    for i, c in enumerate(multi, 1):
-        name = c.display_name or "(no name)"
-        sites = ", ".join(c.sites)
-        bits = []
-        if c.total_followers is not None:
-            bits.append(f"{_format_count(c.total_followers)} followers")
-        if c.locations:
-            bits.append("from " + c.locations[0])
-        elif c.geo_hint and c.geo_hint.region:
-            bits.append(f"likely {c.geo_hint.region}")
-        if c.verified_on:
-            bits.append("✓ verified")
-        meta = " · ".join(bits)
-        meta_part = f"  {dim}({meta}){x}" if meta else ""
-        conf_part = f"{accent}({c.confidence:.2f}){x}"
-        print(f"  {b}{name}{x} {conf_part} → {sites}{meta_part}")
+
+    if overall and len(overall.member_indexes) >= 1:
+        print(f"\n{b}[ IDENTITY ]{x}  {dim}(aggregated from {len(overall.member_indexes)} account(s)){x}")
+        if overall.display_name:
+            print(f"  {b}Name{x}    {overall.display_name}")
+        sites = ", ".join(overall.sites)
+        print(f"  {b}Sites{x}   {sites}")
+        loc_bits: list[str] = []
+        if overall.locations:
+            loc_bits.append(", ".join(overall.locations))
+        if (
+            overall.geo_hint and overall.geo_hint.region
+            and overall.geo_hint.region not in (overall.locations or [])
+        ):
+            loc_bits.append(f"likely {overall.geo_hint.region} ({overall.geo_hint.confidence})")
+        if loc_bits:
+            print(f"  {b}Region{x}  " + " · ".join(loc_bits))
+        stat_bits = []
+        if overall.total_followers is not None:
+            stat_bits.append(f"{_format_count(overall.total_followers)} followers")
+        if overall.total_following is not None:
+            stat_bits.append(f"{_format_count(overall.total_following)} following")
+        if overall.total_posts is not None:
+            stat_bits.append(f"{_format_count(overall.total_posts)} posts")
+        if stat_bits:
+            print(f"  {b}Stats{x}   " + " · ".join(stat_bits))
+        if overall.verified_on:
+            print(f"  {b}✓{x}       Verified on " + ", ".join(overall.verified_on))
+
+    multi = [c for c in (clusters or []) if len(c.member_indexes) > 1]
+    if multi:
+        print(f"\n{b}[ PHOTO MATCH ]{x} {b}{len(multi)}{x}  "
+              f"{dim}(same profile photo across multiple sites){x}")
+        for c in multi:
+            name = c.display_name or "(no name)"
+            sites = ", ".join(c.sites)
+            conf_part = f"{accent}({c.confidence:.2f}){x}"
+            print(f"  {b}{name}{x} {conf_part} → {sites}")
 
 
 def print_compact(
@@ -855,7 +878,7 @@ def _flatten(grouped: list[tuple[str, list[CheckResult]]]):
     return found, unknown, missing_count
 
 
-def _build_json_payload(grouped, raw, elapsed, clusters):
+def _build_json_payload(grouped, raw, elapsed, overall, clusters):
     found, unknown, missing_count = _flatten(grouped)
     return {
         "input": raw,
@@ -866,20 +889,59 @@ def _build_json_payload(grouped, raw, elapsed, clusters):
             "found": len(found),
             "unknown": len(unknown),
             "missing": missing_count,
-            "identities": len([c for c in clusters if len(c.member_indexes) > 1]),
+            "photo_matches": len(
+                [c for c in (clusters or []) if len(c.member_indexes) > 1]
+            ),
         },
-        "identities": [c.to_dict() for c in clusters],
+        "overall_identity": overall.to_dict() if overall else None,
+        "photo_matched_clusters": [
+            c.to_dict() for c in (clusters or []) if len(c.member_indexes) > 1
+        ],
         "found": [asdict(r) for r in found],
         "unknown": [asdict(r) for r in unknown],
     }
 
 
-def export_json(grouped, raw, elapsed, path: Path, clusters=None) -> None:
-    payload = _build_json_payload(grouped, raw, elapsed, clusters or [])
+def export_json(grouped, raw, elapsed, path: Path, overall=None, clusters=None) -> None:
+    payload = _build_json_payload(grouped, raw, elapsed, overall, clusters or [])
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
-def export_markdown(grouped, raw, elapsed, path: Path, clusters=None) -> None:
+def _md_identity_block(c, header: str) -> list[str]:
+    """Render an identity cluster as a markdown block. Used for both the
+    overall identity and photo-matched clusters — same shape, different
+    headers."""
+    lines = [header, ""]
+    if c.display_name:
+        lines.append(f"- **Display name**: {c.display_name}")
+    lines.append(f"- **Sites** ({len(c.sites)}): {', '.join(c.sites)}")
+    if c.locations:
+        lines.append(f"- **Locations**: {', '.join(c.locations)}")
+    if c.geo_hint and c.geo_hint.region and c.geo_hint.region not in c.locations:
+        lines.append(
+            f"- **Likely region**: {c.geo_hint.region} "
+            f"_(conf {c.geo_hint.confidence}, {'; '.join(c.geo_hint.signals)})_"
+        )
+    if c.joined_oldest:
+        lines.append(f"- **Active since**: {c.joined_oldest}")
+    if c.total_followers is not None:
+        lines.append(f"- **Followers (total)**: {c.total_followers:,}")
+    if c.total_following is not None:
+        lines.append(f"- **Following (total)**: {c.total_following:,}")
+    if c.total_posts is not None:
+        lines.append(f"- **Posts (total)**: {c.total_posts:,}")
+    if c.verified_on:
+        lines.append(f"- **Verified on**: {', '.join(c.verified_on)}")
+    if c.private_on:
+        lines.append(f"- **Private on**: {', '.join(c.private_on)}")
+    if c.rationale:
+        lines.append(f"- **Reason**: {'; '.join(c.rationale)}")
+    lines.append(f"- **Confidence**: {c.confidence}")
+    lines.append("")
+    return lines
+
+
+def export_markdown(grouped, raw, elapsed, path: Path, overall=None, clusters=None) -> None:
     found, unknown, missing_count = _flatten(grouped)
     clusters = clusters or []
     multi = [c for c in clusters if len(c.member_indexes) > 1]
@@ -890,43 +952,26 @@ def export_markdown(grouped, raw, elapsed, path: Path, clusters=None) -> None:
         f"_Generated {ts} — {len(grouped)} variant(s) in {elapsed:.1f}s_",
         "",
         f"- **Found**: {len(found)}",
-        f"- **Identified persons**: {len(multi)}",
+        f"- **Photo-matched accounts**: {len(multi)}",
         f"- **Unknown**: {len(unknown)}",
         f"- **Missing**: {missing_count}",
         "",
     ]
+    if overall and len(found) >= 2:
+        lines += _md_identity_block(overall, "## Overall identity")
     if multi:
-        lines += [f"## Identified persons ({len(multi)})", ""]
+        lines += [f"## Photo-matched accounts ({len(multi)})", ""]
         for i, c in enumerate(multi, 1):
-            name = c.display_name or "(no name)"
-            lines.append(f"### Person {i}: {name}  *(confidence {c.confidence})*")
-            lines.append("")
-            lines.append(f"- **Sites**: {', '.join(c.sites)}")
-            if c.locations:
-                lines.append(f"- **Locations**: {', '.join(c.locations)}")
-            if c.geo_hint and c.geo_hint.region and c.geo_hint.region not in c.locations:
-                lines.append(
-                    f"- **Likely region**: {c.geo_hint.region} "
-                    f"_(conf {c.geo_hint.confidence}, {'; '.join(c.geo_hint.signals)})_"
-                )
-            if c.joined_oldest:
-                lines.append(f"- **Active since**: {c.joined_oldest}")
-            if c.total_followers is not None:
-                lines.append(f"- **Followers (total)**: {c.total_followers:,}")
-            if c.total_posts is not None:
-                lines.append(f"- **Posts (total)**: {c.total_posts:,}")
-            if c.verified_on:
-                lines.append(f"- **Verified on**: {', '.join(c.verified_on)}")
-            if c.rationale:
-                lines.append(f"- **Reason**: {'; '.join(c.rationale)}")
-            lines.append("")
+            lines += _md_identity_block(
+                c, f"### Match {i}: {c.display_name or '(no name)'}"
+            )
     lines += [
         f"## Found ({len(found)})",
         "",
     ]
     if found:
         for r in found:
-            target = r.final_url or r.url
+            target = r.url  # canonical URL — see _format_row note
             tag = f" — `{r.variant}`" if r.variant else ""
             lines.append(f"- [{r.site}]({target}){tag}")
     else:
@@ -934,7 +979,7 @@ def export_markdown(grouped, raw, elapsed, path: Path, clusters=None) -> None:
     lines += ["", f"## Unknown ({len(unknown)})", ""]
     if unknown:
         for r in unknown:
-            target = r.final_url or r.url
+            target = r.url
             note = f" ({r.reason})" if r.reason else ""
             tag = f" — `{r.variant}`" if r.variant else ""
             lines.append(f"- [{r.site}]({target}){note}{tag}")
@@ -1164,7 +1209,7 @@ _HTML_TEMPLATE = """<!doctype html>
 </header>
 
 <div class="stats">
-  <div class="stat identity"><div class="n">{n_identities}</div><div class="label">Identified</div></div>
+  <div class="stat identity"><div class="n">{n_identities}</div><div class="label">Photo matches</div></div>
   <div class="stat found"><div class="n">{n_found}</div><div class="label">Found</div></div>
   <div class="stat unknown"><div class="n">{n_unknown}</div><div class="label">Unknown</div></div>
   <div class="stat missing"><div class="n">{n_missing}</div><div class="label">Missing</div></div>
@@ -1239,7 +1284,7 @@ def _html_grouped_card(group) -> str:
     )
     others = [r for r in group if r is not primary]
     sites_chips = "".join(
-        f'<a class="alt-site" href="{html.escape(r.final_url or r.url, quote=True)}" '
+        f'<a class="alt-site" href="{html.escape(r.url, quote=True)}" '
         f'target="_blank" rel="noopener">{html.escape(r.site)}</a>'
         for r in [primary] + others
     )
@@ -1271,7 +1316,7 @@ def _html_card(r: CheckResult) -> str:
       [variant pill]                     [open profile →]
     """
     p = r.profile or {}
-    target = r.final_url or r.url
+    target = r.url  # canonical URL for click — see _format_row note
     site_badge = html.escape(r.site)
 
     # --- header (photo) ---
@@ -1378,7 +1423,7 @@ def _html_card(r: CheckResult) -> str:
 
 
 def _html_unknown_row(r: CheckResult) -> str:
-    target = r.final_url or r.url
+    target = r.url  # canonical URL for click — see _format_row note
     return (
         '<tr><td>{site}</td>'
         '<td><a href="{href}" target="_blank" rel="noopener">{url}</a></td>'
@@ -1393,16 +1438,31 @@ def _html_unknown_row(r: CheckResult) -> str:
     )
 
 
-def _html_identity_card(c, idx: int) -> str:
-    """One "Identified person" panel. Built from an IdentityCluster."""
+def _html_identity_card(c, idx: int, kind: str = "cluster") -> str:
+    """One identity panel. `kind` distinguishes the overall aggregate
+    (one big summary across every FOUND) from a photo-matched cluster
+    (a high-confidence "same person on these N sites" group).
+
+    The shape of the card is the same; only the confidence label
+    changes — overall confidence reflects "how well we know this
+    person", cluster confidence reflects "how sure are we these accounts
+    are the same person".
+    """
     name = c.display_name or f"Person {idx}"
-    badge = ""
-    if c.confidence >= 0.85:
-        badge = '<span class="conf high">HIGH CONFIDENCE</span>'
-    elif c.confidence >= 0.6:
-        badge = '<span class="conf med">LIKELY MATCH</span>'
+    if kind == "overall":
+        if c.confidence >= 0.7:
+            badge = '<span class="conf high">RICH PROFILE</span>'
+        elif c.confidence >= 0.55:
+            badge = '<span class="conf med">PARTIAL PROFILE</span>'
+        else:
+            badge = '<span class="conf low">SPARSE</span>'
     else:
-        badge = '<span class="conf low">CANDIDATE</span>'
+        if c.confidence >= 0.85:
+            badge = '<span class="conf high">HIGH CONFIDENCE</span>'
+        elif c.confidence >= 0.6:
+            badge = '<span class="conf med">LIKELY MATCH</span>'
+        else:
+            badge = '<span class="conf low">CANDIDATE</span>'
 
     photos_html = "".join(
         f'<div class="photo-thumb" style="background-image:url(\'{html.escape(p, quote=True)}\')"></div>'
@@ -1502,25 +1562,38 @@ def _photo_dedup_groups(found: list, clusters) -> list[list]:
     return groups
 
 
-def export_html(grouped, raw, elapsed, path: Path, clusters=None) -> None:
+def export_html(grouped, raw, elapsed, path: Path, overall=None, clusters=None) -> None:
     found, unknown, missing_count = _flatten(grouped)
     clusters = clusters or []
     multi = [c for c in clusters if len(c.member_indexes) > 1]
 
-    # Identity correlation runs on a flattened FOUND list. The order of
-    # rows fed into build_identities was the same flatten() call as the
-    # one we use here, so member_indexes line up.
+    # Two identity views, in priority order:
+    #   1. The overall identity card — built from EVERY FOUND result.
+    #      Always shown when there's something to summarise (≥ 1 found).
+    #      This is what surfaces a region for users whose photos don't
+    #      happen to match across platforms.
+    #   2. Photo-matched clusters — secondary "definitely the same
+    #      person" view, only shown when 2+ accounts share a photo.
+    sections: list[str] = []
+    if overall and len(found) >= 1:
+        sections.append(
+            '<section><h2>Overall identity</h2>'
+            + _html_identity_card(overall, 1, kind="overall")
+            + "</section>"
+        )
     if multi:
-        identity_block = "".join(
-            _html_identity_card(c, i + 1) for i, c in enumerate(multi)
+        cards = "".join(
+            _html_identity_card(c, i + 1, kind="cluster")
+            for i, c in enumerate(multi)
         )
-        identity_section = (
-            f'<section><h2>Identified person'
-            f'{"s" if len(multi) != 1 else ""} ({len(multi)})</h2>'
-            f'{identity_block}</section>'
+        sections.append(
+            f'<section><h2>Photo-matched accounts ({len(multi)})</h2>'
+            f'<p style="color:var(--muted);margin:-6px 0 14px;font-size:13px">'
+            "Profile photos that match perceptually across two or more "
+            "sites — strong evidence the same person owns these accounts."
+            f'</p>{cards}</section>'
         )
-    else:
-        identity_section = ""
+    identity_section = "".join(sections)
 
     if found:
         groups = _photo_dedup_groups(found, clusters)
@@ -1549,6 +1622,10 @@ def export_html(grouped, raw, elapsed, path: Path, clusters=None) -> None:
         elapsed=elapsed,
         generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         n_found=len(found),
+        # "Photo matches" is the right label here: counts groups of 2+
+        # accounts that share a profile photo. The overall identity
+        # is always present (when there's anything found) and lives
+        # in its own section.
         n_identities=len(multi),
         n_unknown=len(unknown),
         n_missing=missing_count,
@@ -1607,16 +1684,17 @@ def export_report(
     raw: str,
     elapsed: float,
     path: Path,
+    overall=None,
     clusters=None,
 ) -> None:
     """Dispatch by extension. Defaults to JSON if the suffix is unrecognised."""
     suffix = path.suffix.lower()
     if suffix == ".html" or suffix == ".htm":
-        export_html(grouped, raw, elapsed, path, clusters)
+        export_html(grouped, raw, elapsed, path, overall, clusters)
     elif suffix == ".md" or suffix == ".markdown" or suffix == ".txt":
-        export_markdown(grouped, raw, elapsed, path, clusters)
+        export_markdown(grouped, raw, elapsed, path, overall, clusters)
     else:
-        export_json(grouped, raw, elapsed, path, clusters)
+        export_json(grouped, raw, elapsed, path, overall, clusters)
 
 
 # ---------------------------------------------------------------------------
@@ -1837,31 +1915,28 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     async def _scan_and_correlate():
         results = await phantom.run_many(variants)
-        # Flatten FOUND results (across all variants) and build identity
-        # clusters. Skip if user disabled it — image fetches add a few
-        # seconds and aren't always wanted.
         if args.no_identity:
-            return results, []
+            return results, None, []
         found_dicts: list[dict] = []
         for _, rs in results:
             for r in rs:
                 if r.exists is True:
                     found_dicts.append(asdict(r))
-        clusters = await build_identities(found_dicts)
-        return results, clusters
+        overall, clusters = await build_overall_and_clusters(found_dicts)
+        return results, overall, clusters
 
     start = time.monotonic()
-    grouped, clusters = asyncio.run(_scan_and_correlate())
+    grouped, overall, clusters = asyncio.run(_scan_and_correlate())
     elapsed = time.monotonic() - start
     cache.save()
 
     if args.as_json:
-        payload = _build_json_payload(grouped, raw, elapsed, clusters)
+        payload = _build_json_payload(grouped, raw, elapsed, overall, clusters)
         print(json.dumps(payload, indent=2))
     elif not args.quiet:
         print_compact(grouped, elapsed, color, args.found_only)
-        if clusters and not args.found_only:
-            _print_identity_summary(clusters, color)
+        if not args.found_only:
+            _print_identity_summary(overall, clusters, color)
 
     # --- Watch mode: snapshot + diff -------------------------------------
     if args.watch:
@@ -1885,7 +1960,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         export_path = resolve_export_path(args.export, raw)
         if export_path.parent and not export_path.parent.exists():
             export_path.parent.mkdir(parents=True, exist_ok=True)
-        export_report(grouped, raw, elapsed, export_path, clusters)
+        export_report(grouped, raw, elapsed, export_path, overall, clusters)
         print(
             f"{_c(color,'dim')}Report written to {export_path}{_c(color,'reset')}",
             file=sys.stderr,

@@ -10,7 +10,7 @@ Designed for **accuracy first**: a `[ FOUND ]` requires positive evidence (a pre
 - **Exportable reports**: `--export FILE` writes the results to **HTML** (card grid with profile photos), **JSON**, or **Markdown** — format inferred from the file extension.
 - **Public profile enrichment**: every FOUND site is scanned for the public profile data the SSR'd page already exposes — display name, bio, photo, follower / following / post counts, location, joined date, verified / private flags. No auth, no extra HTTP calls.
 - **Reliability built-in**: every `(variant × site)` check runs through a shared task pool (so stragglers don't block subsequent variants), transient failures (timeouts, 5xx, transport errors) get one retry, and stable answers are cached on disk for an hour so re-runs are near-instant.
-- **Identity correlation**: profile photos are perceptually hashed and matching photos across platforms are merged into a single "Identified person" view (display name, all photos, locations, oldest joined date, total followers, verified-on-N-of-M). Disable with `--no-identity`.
+- **Identity aggregation**: every FOUND account contributes to one "Overall identity" summary — display name, all photos, vote-counted locations, geo-region inference, total followers across platforms, oldest joined date, verified-on-N-of-M. Photo correlation (perceptually-hashed profile pictures matching across sites) runs on top as a separate "Photo-matched accounts" view. Disable with `--no-identity`.
 - **Watch mode**: `--watch` snapshots the FOUND set after each scan and diffs against the previous run. Combined with `--quiet` and a cron job, you get a daily "what changed" digest — new accounts, removed accounts, follower deltas, bio updates.
 - Two HTTP backends:
   - `aiohttp` for sites with no bot protection (default, fast)
@@ -277,25 +277,40 @@ Variants are **deduplicated and validated** against `^[A-Za-z0-9_.\-]{1,64}$` be
 
 The `MISSING` rows are intentionally not enumerated — only the count is kept (~thousands of them in a multi-variant run is just noise). Use `--export FILE.json` to write this same structure to disk.
 
-## Identity correlation
+## Identity: overall + photo-matched
 
-`identity.py` answers a different question than the scan does. The scanner says *"some account named X exists at site Y"*. Identity correlation says *"these N accounts are the same person"*.
+The scanner says *"some account named X exists at site Y"*. Identity aggregation answers the harder question: *"what do we know about the person whose accounts these are?"*
 
-**How:**
+There are two views, both built from the same FOUND set:
 
-1. For each FOUND result, fetch the profile photo and compute a perceptual hash (`imagehash.phash`). The hash captures *what the picture looks like*, not its bytes — a 48px Twitter avatar and a 400px Instagram upload of the same selfie produce hashes within Hamming-distance 2.
-2. Pairwise compare hashes across the FOUND set. Pairs within distance ≤ 8 are merged into the same identity cluster — that's a strong "same image" signal.
+### Overall identity (always shown)
+
+Aggregated from **every** FOUND account, regardless of clustering:
+
+- **Display name** — most common normalized name across results.
+- **Photos** — the union of every profile picture URL we extracted.
+- **Locations** — vote-counted union of every `location` field. The most-mentioned region wins.
+- **Geo region** — inferred from location strings, then bio language detection (Unicode-block + common-word matching for French/Spanish/Arabic/CJK/etc.), then joined-date timezone offsets. Lower-confidence fallbacks fire only if no explicit location was found.
+- **Followers / Following / Posts** — summed across platforms (best-effort total reach).
+- **Verified on / Private on** — list of sites where the account is verified or private.
+- **Oldest joined date** — earliest `joined` value across results.
+
+This view exists specifically for users whose photos don't happen to match across platforms — it pulls the geo region from anywhere it can find it, instead of needing two photos to agree first. If someone else owns one of the matched accounts (false positive), the aggregate is still mostly accurate because it's the union of many signals; one outlier doesn't dominate.
+
+### Photo-matched accounts (when applicable)
+
+A secondary "definitely the same person" view, only shown when 2+ accounts share a profile photo:
+
+1. For each FOUND result, fetch the profile photo and compute a perceptual hash (`imagehash.phash`). A 48px Twitter avatar and a 400px Instagram upload of the same selfie produce hashes within Hamming-distance 2.
+2. Pairs within Hamming-distance ≤ 8 merge into the same group.
 3. As a secondary signal, results with identical normalized display names *and* high bio-token overlap also merge. Either alone is too weak (common names collide, short bios share filler words).
-4. Each cluster ships with an aggregated view: total followers/following/posts across platforms, oldest joined date, all photos, all reported locations, sites where the person is verified, sites where the account is private.
-5. Each cluster also ships with a confidence score (0–1) and a rationale (`"matching profile photo (hamming=2)"`, `"identical display name + bio overlap 0.61"`).
-
-**What gets surfaced:**
-
-- HTML report: an "Identified persons" section above the FOUND grid, one card per cluster with photo gallery, stats row, location/joined chips, verified/private/variants list, and the rationale.
-- Terminal: a one-line-per-person summary (only printed when there's at least one multi-site cluster).
-- JSON: full `identities` array, including singleton clusters (each FOUND result that didn't merge with anything stays in its own cluster).
+4. Each group ships with a confidence score and a rationale (`"matching profile photo (hamming=2)"`, `"identical display name + bio overlap 0.61"`).
 
 **Privacy note:** identity correlation downloads the public profile photo URLs that are *already in* the SSR'd HTML you scraped during the scan. No auth, no API keys, no cookies. The hashes stay local and aren't sent anywhere. Disable the whole step with `--no-identity` if you don't want photos fetched.
+
+### Canonical URLs for click links
+
+The clickable URLs in the HTML/Markdown report (and the URL printed on the terminal line) are the **original, canonical** URLs we requested — `https://www.instagram.com/<user>/` rather than whatever Instagram redirected to mid-scan. Some platforms drop the `www` subdomain on redirect, then their own bot detection bounces cold visits to the redirected form. Using the canonical URL avoids that. The redirected `final_url` is still recorded in the JSON output for inspection.
 
 ### Geolocation hints (no API)
 
