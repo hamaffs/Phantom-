@@ -278,13 +278,9 @@
     "url": "https://m.twitch.tv/{username}",
     "method": "message",
     "presence_text": [
-      "\"login\":\"{username}\"",
-      "twitch.tv/{username}",
-      "<title>{username} - Twitch</title>",
-      "<meta name=\"twitter:url\" content=\"https://m.twitch.tv/{username}\"",
-      "<meta name=\"twitter:url\" content=\"https://www.twitch.tv/{username}\"",
-      "<meta property=\"og:url\" content=\"https://m.twitch.tv/{username}\"",
-      "<meta property=\"og:url\" content=\"https://www.twitch.tv/{username}\""
+      "al:ios:url\" content=\"twitch.tv/{username}\"",
+      "og:url\" content=\"https://www.twitch.tv/{username}\"",
+      "{username} streams live on Twitch"
     ],
     "absence_text": ["Sorry. Unless you've got a time machine"],
     "protection": ["tls_fingerprint"],

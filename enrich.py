@@ -340,9 +340,19 @@ def extract_github(body: str, username: str) -> dict:
         if title.endswith(" - Overview"):
             info["display_name"] = title[: -len(" - Overview")]
 
-    # Drop the og:description boilerplate ("X has N repositories available.
-    # Follow their code on GitHub.") — it's not a real bio.
-    if info.get("bio", "").startswith(("Follow ", username)) and "repositor" in info.get("bio", ""):
+    # Drop the og:description boilerplate — it's not a real bio. GitHub
+    # serves a few variants depending on profile type/state:
+    #   "<name> has N repositories available. Follow their code on GitHub."
+    #   "<name> has one repository available. Follow their code on GitHub."
+    #   "GitHub is where <name> builds software."
+    # The leading name uses display capitalization (e.g. "Node.js"), not
+    # the URL slug, so a username-based startswith check misses orgs.
+    bio = info.get("bio", "") or ""
+    if (
+        re.search(r"\bhas\s+\S+\s+(?:public\s+)?repositor(?:y|ies)\s+available\b", bio, re.IGNORECASE)
+        or re.search(r"\bGitHub is where .+ builds software\b", bio, re.IGNORECASE)
+        or re.search(r"\bFollow their code on GitHub\b", bio, re.IGNORECASE)
+    ):
         info.pop("bio", None)
 
     # Real bio from the profile div (may be empty / hidden).
@@ -789,6 +799,28 @@ def extract_behance(body: str, username: str) -> dict:
     return info
 
 
+def extract_pastebin(body: str, username: str) -> dict:
+    info = extract_meta(body, f"https://pastebin.com/u/{username}")
+    # Pastebin's og:image is a site-wide social card (e.g.
+    # /i/facebook.png), never the user's avatar — drop anything served
+    # under the /i/ icon path.
+    photo = info.get("photo") or ""
+    if re.search(r"/i/[^/?#]+\.(?:png|jpe?g|gif|webp|svg)\b", photo, re.IGNORECASE):
+        info.pop("photo", None)
+    # The real avatar lives in <div class="user-icon"><img src="...">.
+    m = re.search(
+        r'<div[^>]+class=["\'][^"\']*\buser-icon\b[^"\']*["\'][^>]*>\s*'
+        r'<img[^>]+src=["\']([^"\']+)["\']',
+        body, re.IGNORECASE,
+    )
+    if m:
+        src = m.group(1)
+        # Skip the default placeholder shown for users without an avatar.
+        if "guest.png" not in src:
+            info["photo"] = urljoin(f"https://pastebin.com/u/{username}", src)
+    return info
+
+
 _PER_SITE = {
     "Twitter": extract_twitter,
     "TikTok": extract_tiktok,
@@ -801,6 +833,7 @@ _PER_SITE = {
     "Threads": extract_threads,
     "Facebook": extract_facebook,
     "Behance": extract_behance,
+    "Pastebin": extract_pastebin,
 }
 
 
