@@ -1016,6 +1016,7 @@ def _run_api_subcommand(argv: list[str]) -> int:
 _HUNTER_DOMAIN_BLOCKLIST = frozenset({
     "instagram.com", "twitter.com", "x.com", "tiktok.com",
     "threads.net", "facebook.com", "youtube.com", "twitch.tv",
+    "twitchtracker.com",
     "reddit.com", "pastebin.com", "pinterest.com", "tumblr.com",
     "soundcloud.com", "telegram.org", "discord.com", "linkedin.com",
 })
@@ -1025,14 +1026,22 @@ _HUNTER_DOMAIN_BLOCKLIST = frozenset({
 _HUNTER_MIN_SCORE = 70
 
 
+_NAME_TITLE_SEPARATOR_RE = re.compile(r"\s[-|·–—]\s|&")
+
+
 def _looks_like_real_name(s: str) -> bool:
     """Cheap filter for Hunter.io: a real full name has at least two
-    whitespace-separated parts, with the first and last each ≥2 chars.
-    Usernames ("hamaffs", "hama.ffs") fail the space check; "X Y" fails
-    the length check. Hunter rejects the rest with "couldn't extract
-    first and last name", so skipping locally saves the API call.
+    whitespace-separated parts with the first and last each ≥2 chars,
+    AND no page-title-style separators (" - ", " | ", " · ", "&"). The
+    last check catches og:title strings that platforms ship as display
+    names — e.g. twitchtracker emits "<user> - Streamer Overview & Stats"
+    which passes the word/length test but Hunter rejects with "Full name
+    contains invalid characters".
     """
-    parts = s.strip().split()
+    text = s.strip()
+    if _NAME_TITLE_SEPARATOR_RE.search(text):
+        return False
+    parts = text.split()
     if len(parts) < 2:
         return False
     return len(parts[0]) >= 2 and len(parts[-1]) >= 2
@@ -1891,6 +1900,34 @@ _HTML_TEMPLATE = """<!doctype html>
     font-weight: 500;
   }}
 
+  /* ---------- Emails section ---------- */
+  .emails-table .ok td {{ color: var(--text); }}
+  .emails-table .err td {{ color: var(--rose); }}
+  .emails-table .dim td {{ color: var(--muted); }}
+  .emails-table td .dim {{ color: var(--muted); }}
+  .emails-table td .err {{ color: var(--rose); }}
+
+  /* ---------- Inconclusive collapsible ---------- */
+  details.unknown-fold {{ margin-top: 4px; }}
+  details.unknown-fold > summary {{
+    list-style: none; cursor: pointer; user-select: none;
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 9px 16px; border-radius: 8px;
+    background: var(--surface-2); border: 1px solid var(--border);
+    color: var(--text); font-size: 13px; font-weight: 500;
+    transition: background 0.15s, border-color 0.15s;
+  }}
+  details.unknown-fold > summary::-webkit-details-marker {{ display: none; }}
+  details.unknown-fold > summary::before {{
+    content: "▸"; font-size: 11px; color: var(--muted);
+    transition: transform 0.18s ease;
+  }}
+  details.unknown-fold[open] > summary::before {{ transform: rotate(90deg); }}
+  details.unknown-fold > summary:hover {{
+    background: rgba(124, 140, 255, 0.06); border-color: var(--accent);
+  }}
+  details.unknown-fold > .table {{ margin-top: 14px; }}
+
   /* ---------- Footer ---------- */
   footer {{
     color: var(--muted); padding: 36px 56px 48px;
@@ -1947,6 +1984,8 @@ _HTML_TEMPLATE = """<!doctype html>
   </div>
   {found_block}
 </section>
+
+{emails_section}
 
 <section>
   <div class="section-head">
@@ -2190,6 +2229,70 @@ def _html_card(r: CheckResult, photo_match: Optional[list] = None) -> str:
     return f'<div class="card">{head}{body}</div>'
 
 
+def _html_emails_section(found: list, emails: dict) -> str:
+    """Per-site Hunter.io results table — discovered addresses,
+    low-confidence drops, errors, and skips. Mirrors the terminal
+    [ EMAILS ] block. Hidden when no emails dict was produced."""
+    if not emails:
+        return ""
+    rows: list[str] = []
+    n_emails = 0
+    for r in found:
+        info = emails.get(r.site)
+        if not info:
+            continue
+        site_cell = html.escape(r.site)
+        if info.get("email"):
+            n_emails += 1
+            email = html.escape(info["email"])
+            href = html.escape(info["email"], quote=True)
+            score = info.get("score")
+            score_part = f' <span class="dim">({score})</span>' if score is not None else ""
+            cell = (
+                f'<a href="mailto:{href}" '
+                f'style="color:inherit;text-decoration:underline">{email}</a>'
+                f'{score_part}'
+            )
+            klass = "ok"
+        elif info.get("low_confidence"):
+            score = info.get("score")
+            tail = f" (score {score})" if score is not None else ""
+            cell = f'<span class="dim">low confidence{html.escape(tail)}</span>'
+            klass = "dim"
+        elif info.get("error"):
+            cell = f'<span class="err">error: {html.escape(info["error"])}</span>'
+            klass = "err"
+        elif info.get("skipped"):
+            cell = f'<span class="dim">skipped: {html.escape(info["skipped"])}</span>'
+            klass = "dim"
+        else:
+            cell = '<span class="dim">no match</span>'
+            klass = "dim"
+        rows.append(
+            f'<tr class="{klass}"><td>{site_cell}</td><td>{cell}</td></tr>'
+        )
+    if not rows:
+        return ""
+    table = (
+        '<table class="table emails-table"><thead><tr>'
+        '<th>Site</th><th>Email</th></tr></thead><tbody>'
+        + "".join(rows) + '</tbody></table>'
+    )
+    return (
+        '<section>'
+        '<div class="section-head">'
+        '<h2>Discovered emails</h2>'
+        f'<span class="count">{n_emails}</span>'
+        '</div>'
+        '<p class="section-note">'
+        "Resolved via Hunter.io email-finder using each profile's "
+        "display name and the site's domain. Social platforms are skipped "
+        "because they don't issue user-addressable mailboxes; results "
+        "below score 70 are dropped as low-confidence."
+        f'</p>{table}</section>'
+    )
+
+
 def _html_unknown_row(r: CheckResult) -> str:
     target = r.url  # canonical URL for click — see _format_row note
     return (
@@ -2321,10 +2424,11 @@ def _photo_match_map(found: list, clusters) -> dict[int, list]:
     return out
 
 
-def export_html(grouped, raw, elapsed, path: Path, overall=None, clusters=None) -> None:
+def export_html(grouped, raw, elapsed, path: Path, overall=None, clusters=None, emails=None) -> None:
     found, unknown, missing_count = _flatten(grouped)
     clusters = clusters or []
     multi = [c for c in clusters if len(c.member_indexes) > 1]
+    emails_section = _html_emails_section(found, emails) if emails else ""
 
     # Two identity views, in priority order:
     #   1. The overall identity card — built from EVERY FOUND result.
@@ -2373,9 +2477,13 @@ def export_html(grouped, raw, elapsed, path: Path, overall=None, clusters=None) 
     if unknown:
         rows = "".join(_html_unknown_row(r) for r in unknown)
         unknown_block = (
+            '<details class="unknown-fold">'
+            f'<summary>Show {len(unknown)} inconclusive '
+            f'result{"s" if len(unknown) != 1 else ""}</summary>'
             '<table class="table"><thead><tr>'
             "<th>Site</th><th>URL</th><th>Reason</th><th>Variant</th>"
             "</tr></thead><tbody>" + rows + "</tbody></table>"
+            '</details>'
         )
     else:
         unknown_block = '<p style="color:var(--muted)">No unknowns.</p>'
@@ -2397,6 +2505,7 @@ def export_html(grouped, raw, elapsed, path: Path, overall=None, clusters=None) 
         n_unknown=len(unknown),
         n_missing=missing_count,
         identity_section=identity_section,
+        emails_section=emails_section,
         found_block=found_block,
         unknown_block=unknown_block,
         variants_html=variants_html,
@@ -2458,7 +2567,7 @@ def export_report(
     """Dispatch by extension. Defaults to JSON if the suffix is unrecognised."""
     suffix = path.suffix.lower()
     if suffix == ".html" or suffix == ".htm":
-        export_html(grouped, raw, elapsed, path, overall, clusters)
+        export_html(grouped, raw, elapsed, path, overall, clusters, emails)
     elif suffix == ".md" or suffix == ".markdown" or suffix == ".txt":
         export_markdown(grouped, raw, elapsed, path, overall, clusters)
     else:

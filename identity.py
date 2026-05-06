@@ -57,7 +57,7 @@ except ImportError:  # pragma: no cover — deps optional but in requirements
 # distinct background tint or palette swap. Risk is higher false-merge
 # on similar-but-different selfies; the rationale string in each cluster
 # still surfaces the exact distance for inspection.
-_PHASH_MATCH_DISTANCE = 12
+_PHASH_MATCH_DISTANCE = 16
 
 # Profile photo fetch budget. Stays small because we don't actually need
 # the whole image — phash works on a 32×32 downscale.
