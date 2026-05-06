@@ -1005,6 +1005,19 @@ def _run_api_subcommand(argv: list[str]) -> int:
     return 2
 
 
+def _looks_like_real_name(s: str) -> bool:
+    """Cheap filter for Hunter.io: a real full name has at least two
+    whitespace-separated parts, with the first and last each ≥2 chars.
+    Usernames ("hamaffs", "hama.ffs") fail the space check; "X Y" fails
+    the length check. Hunter rejects the rest with "couldn't extract
+    first and last name", so skipping locally saves the API call.
+    """
+    parts = s.strip().split()
+    if len(parts) < 2:
+        return False
+    return len(parts[0]) >= 2 and len(parts[-1]) >= 2
+
+
 async def discover_emails(
     found: list["CheckResult"],
     api_key: str,
@@ -1027,6 +1040,9 @@ async def discover_emails(
         display = ((r.profile or {}).get("display_name") or "").strip()
         if not display:
             skipped[r.site] = {"skipped": "no display_name"}
+            continue
+        if not _looks_like_real_name(display):
+            skipped[r.site] = {"skipped": "no real name detected"}
             continue
         host = (urlparse(r.url).hostname or "").lower()
         if host.startswith("www."):
