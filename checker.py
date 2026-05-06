@@ -303,6 +303,11 @@ class ResponseCache:
                 continue
             if now - v.get("ts", 0) > _CACHE_TTL:
                 continue
+            # Skip pre-existing UNKNOWNs from older runs that didn't yet
+            # filter them out — caching uncertainty is the wrong policy.
+            if v.get("exists") is None:
+                self._dirty = True
+                continue
             self._mem[k] = v
 
     def get(self, method: str, url: str, body: Optional[str]) -> Optional[dict]:
@@ -495,11 +500,11 @@ class Phantom:
                     retry.reason = (retry.reason or "") + "+retry"
                     result = retry
 
-        # Cache anything that wasn't a transient failure. A bot wall today
-        # will be a bot wall in five minutes — caching saves the round trip.
-        # Only timeouts and transport errors (where _is_transient is True
-        # *and* we still don't have a verdict after retry) are excluded.
-        if not _is_transient(result):
+        # Cache only definitive verdicts (FOUND / MISSING). UNKNOWN means
+        # we couldn't decide — usually a transient SPA-shell, login wall,
+        # or rate-limit response — and locking that in for an hour blocks
+        # legitimate retries. Transient transport errors are also skipped.
+        if not _is_transient(result) and result.exists is not None:
             self.cache.set(method_name, url, body_payload, _result_to_cache(result))
         return result
 
@@ -590,11 +595,11 @@ class Phantom:
                     retry.reason = (retry.reason or "") + "+retry"
                     result = retry
 
-        # Cache anything that wasn't a transient failure. A bot wall today
-        # will be a bot wall in five minutes — caching saves the round trip.
-        # Only timeouts and transport errors (where _is_transient is True
-        # *and* we still don't have a verdict after retry) are excluded.
-        if not _is_transient(result):
+        # Cache only definitive verdicts (FOUND / MISSING). UNKNOWN means
+        # we couldn't decide — usually a transient SPA-shell, login wall,
+        # or rate-limit response — and locking that in for an hour blocks
+        # legitimate retries. Transient transport errors are also skipped.
+        if not _is_transient(result) and result.exists is not None:
             self.cache.set(method_name, url, body_payload, _result_to_cache(result))
         return result
 

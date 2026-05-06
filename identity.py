@@ -51,10 +51,13 @@ except ImportError:  # pragma: no cover — deps optional but in requirements
 
 # Hamming distance threshold below which two phashes are considered
 # "the same image". 64-bit phash → distances 0–10 mean "identical or
-# only minor variation" (resize, JPEG re-compression, subtle crop). 8 is
-# the sweet spot in practice — tighter misses real matches across CDNs,
-# looser starts merging different-but-similar selfies.
-_PHASH_MATCH_DISTANCE = 8
+# only minor variation" (resize, JPEG re-compression, subtle crop).
+# Bumped from 8 to 12 to capture the same-logo-different-bg/color case
+# where a creator uses one logo across platforms but each upload has a
+# distinct background tint or palette swap. Risk is higher false-merge
+# on similar-but-different selfies; the rationale string in each cluster
+# still surfaces the exact distance for inspection.
+_PHASH_MATCH_DISTANCE = 12
 
 # Profile photo fetch budget. Stays small because we don't actually need
 # the whole image — phash works on a 32×32 downscale.

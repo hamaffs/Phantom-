@@ -275,16 +275,17 @@
   {
     "name": "Twitch",
     "category": "gaming",
-    "url": "https://www.twitch.tv/{username}",
-    "method": "message",
+    "url": "https://twitchtracker.com/{username}",
+    "method": "status",
+    "valid_status": [200],
+    "invalid_status": [404],
     "presence_text": [
-      "https://player.twitch.tv/?channel={username}",
-      "\"{username} - Twitch\"",
-      "https://www.twitch.tv/{username}"
+      "{username} - Streamer Overview",
+      "Overview of {username} activities",
+      "twitchtracker.com/{username}"
     ],
-    "absence_text": ["Sorry. Unless you've got a time machine"],
-    "protection": ["tls_fingerprint"],
-    "reliability": 80
+    "absence_text": ["404 Page Not Found"],
+    "reliability": 85
   },
   {
     "name": "Chess.com",
