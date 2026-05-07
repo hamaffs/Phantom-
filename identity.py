@@ -507,23 +507,62 @@ class IdentityCluster:
 # Photo fetching + hashing
 # ---------------------------------------------------------------------------
 
+_IMAGE_REFERERS = (
+    ("cdninstagram.com", "https://www.instagram.com/"),
+    ("fbcdn.net", "https://www.facebook.com/"),
+    ("tiktokcdn", "https://www.tiktok.com/"),
+    ("twimg.com", "https://x.com/"),
+    ("ggpht.com", "https://www.youtube.com/"),
+    ("googleusercontent.com", "https://www.youtube.com/"),
+    ("jtvnw.net", "https://www.twitch.tv/"),
+)
+
+
+def _referer_for(url: str) -> Optional[str]:
+    for host_frag, ref in _IMAGE_REFERERS:
+        if host_frag in url:
+            return ref
+    return None
+
+
 async def _fetch_image(session: aiohttp.ClientSession, url: str) -> Optional[bytes]:
-    """Best-effort image download with a tight budget."""
-    try:
-        async with session.get(
-            url,
-            headers={"User-Agent": _IMAGE_USER_AGENT, "Accept": "image/*,*/*;q=0.8"},
-            timeout=aiohttp.ClientTimeout(total=_IMAGE_FETCH_TIMEOUT),
-            allow_redirects=True,
-        ) as resp:
-            if resp.status != 200:
-                return None
-            data = await resp.content.read(_IMAGE_MAX_BYTES)
-            if not data or len(data) < 200:  # tiny → tracking pixel, skip
-                return None
-            return data
-    except Exception:
-        return None
+    """Best-effort image download with a tight budget.
+
+    IG/TikTok/Facebook/Twitter image CDNs often 403 plain GETs without a
+    Referer matching their parent site. We attach one based on host match,
+    plus retry once with a slightly slower deadline — the vast majority of
+    transient failures are TLS handshake stalls under high concurrency.
+    """
+    headers = {
+        "User-Agent": _IMAGE_USER_AGENT,
+        "Accept": "image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8,*/*;q=0.5",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+    ref = _referer_for(url)
+    if ref:
+        headers["Referer"] = ref
+
+    for attempt in (0, 1):
+        try:
+            async with session.get(
+                url,
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=_IMAGE_FETCH_TIMEOUT),
+                allow_redirects=True,
+            ) as resp:
+                if resp.status != 200:
+                    if attempt == 0 and resp.status in (403, 429, 503):
+                        continue
+                    return None
+                data = await resp.content.read(_IMAGE_MAX_BYTES)
+                if not data or len(data) < 200:  # tiny → tracking pixel, skip
+                    return None
+                return data
+        except Exception:
+            if attempt == 0:
+                continue
+            return None
+    return None
 
 
 def _phash_bytes(data: bytes):
