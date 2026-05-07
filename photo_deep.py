@@ -227,12 +227,22 @@ async def _hf_embed_one(
     session: aiohttp.ClientSession,
     image_bytes: bytes,
     token: str,
+    diag: dict,
 ) -> Optional[list[float]]:
+    """Call HF Inference API for one image. On failure, record the
+    *first* failure reason into `diag` so the orchestrator can surface
+    a single useful note instead of a silent 0-embeddings result.
+    """
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/octet-stream",
         "Accept": "application/json",
     }
+
+    def _record(reason: str) -> None:
+        if "first_failure" not in diag:
+            diag["first_failure"] = reason
+
     try:
         async with session.post(
             _HF_URL,
@@ -241,7 +251,6 @@ async def _hf_embed_one(
             timeout=aiohttp.ClientTimeout(total=_HF_TIMEOUT),
         ) as resp:
             if resp.status == 503:
-                # Cold-start. HF returns Retry-After. One retry is enough.
                 await asyncio.sleep(min(20.0, float(resp.headers.get("Retry-After", 5))))
                 async with session.post(
                     _HF_URL,
@@ -250,17 +259,23 @@ async def _hf_embed_one(
                     timeout=aiohttp.ClientTimeout(total=_HF_TIMEOUT),
                 ) as resp2:
                     if resp2.status != 200:
+                        snippet = (await resp2.text(errors="ignore"))[:200]
+                        _record(f"HTTP {resp2.status} after retry: {snippet.strip()}")
                         return None
                     raw = await resp2.json()
             elif resp.status != 200:
+                snippet = (await resp.text(errors="ignore"))[:200]
+                _record(f"HTTP {resp.status}: {snippet.strip()}")
                 return None
             else:
                 raw = await resp.json()
-    except Exception:
+    except Exception as e:
+        _record(f"network error: {type(e).__name__}: {e}")
         return None
 
     vec = _flatten_embedding(raw)
     if not vec:
+        _record(f"unexpected payload shape: {str(raw)[:200]}")
         return None
     return _l2_normalise(vec)
 
@@ -269,14 +284,16 @@ async def compute_dino_embeddings(
     photo_urls: list[Optional[str]],
     photo_bytes: list[Optional[bytes]],
     token: str,
-) -> list[Optional[list[float]]]:
+) -> tuple[list[Optional[list[float]]], dict]:
     """Embed each photo via HF + DINOv2. Cached by URL.
 
-    Length and order match `photo_urls`. None entries indicate no photo,
-    no bytes, or an embedding failure.
+    Returns (embeddings, diag). `embeddings` is parallel to photo_urls;
+    None entries indicate no photo, no bytes, or an embedding failure.
+    `diag` carries the first failure reason for surfacing in notes.
     """
     out: list[Optional[list[float]]] = [None] * len(photo_urls)
     pending: list[int] = []
+    diag: dict = {}
 
     for i, url in enumerate(photo_urls):
         if not url or not photo_bytes[i]:
@@ -288,13 +305,13 @@ async def compute_dino_embeddings(
             pending.append(i)
 
     if not pending:
-        return out
+        return out, diag
 
     sem = asyncio.Semaphore(_HF_CONCURRENCY)
     async with aiohttp.ClientSession() as session:
         async def one(idx: int):
             async with sem:
-                vec = await _hf_embed_one(session, photo_bytes[idx], token)
+                vec = await _hf_embed_one(session, photo_bytes[idx], token, diag)
             if vec:
                 out[idx] = vec
                 if photo_urls[idx]:
@@ -302,7 +319,7 @@ async def compute_dino_embeddings(
 
         await asyncio.gather(*(one(i) for i in pending))
 
-    return out
+    return out, diag
 
 
 def dino_pairs(embeddings: list[Optional[list[float]]]) -> list[tuple[int, int, float]]:
@@ -469,6 +486,25 @@ _NON_PROFILE_PATHS = re.compile(
 )
 
 
+def _host_matches(host: str, suffix: str) -> bool:
+    """Proper domain-suffix match, not substring.
+
+    `x.com` must NOT match `yandex.com` or `netflix.com` — it's a
+    suffix relationship, not a substring one. The check: host equals
+    the suffix exactly, or host ends with `.<suffix>`.
+    """
+    return host == suffix or host.endswith("." + suffix)
+
+
+# Yandex's own subdomains (passport, support, etc.) and other
+# obvious-noise hosts that appear all over the result page chrome but
+# aren't reverse-image hits.
+_RESULT_NOISE_HOSTS = (
+    "yandex.com", "yandex.ru", "yandex.net", "yastatic.net", "ya.ru",
+    "yandex-team.ru", "mc.yandex.ru", "an.yandex.ru",
+)
+
+
 def _classify_url(url: str) -> tuple[Optional[str], Optional[str]]:
     """Map a URL to (platform_name, username) when it looks like a profile."""
     try:
@@ -478,28 +514,53 @@ def _classify_url(url: str) -> tuple[Optional[str], Optional[str]]:
     host = (parsed.netloc or "").lower()
     path = parsed.path or "/"
 
+    # Strip any leading creds + port.
+    if "@" in host:
+        host = host.split("@", 1)[1]
+    if ":" in host:
+        host = host.split(":", 1)[0]
+
+    if not host or "." not in host:
+        return None, None
+
+    # Yandex chrome / its own infra is never a hit.
+    for noise in _RESULT_NOISE_HOSTS:
+        if _host_matches(host, noise):
+            return None, None
+
     if _NON_PROFILE_PATHS.match(path):
         return None, None
 
     for host_frag, name, pat in _PLATFORM_PATTERNS:
-        if host_frag in host:
-            if pat is None:
-                return name, None
-            m = pat.match(path)
-            if m:
-                handle = m.group(1).lower()
-                # Filter out obvious non-handles (e.g. Facebook /pages/...).
-                if handle in {"home", "explore", "settings", "help", "about"}:
-                    return name, None
-                return name, handle
+        if not _host_matches(host, host_frag):
+            continue
+        if pat is None:
             return name, None
+        m = pat.match(path)
+        if m:
+            handle = m.group(1).lower()
+            # Filter out obvious non-handles.
+            if handle in {"home", "explore", "settings", "help", "about", "tv"}:
+                return name, None
+            return name, handle
+        return name, None
     return None, None
 
 
-# Yandex page contains image-result URLs in a JSON blob inside the
-# `Object.assign(...)` call. The pragmatic approach: extract every URL
-# that looks like a profile page from the raw HTML, then dedupe.
-_URL_RE = re.compile(r'https?://[^\s"\'<>]+', re.IGNORECASE)
+# Tight URL boundary — stops at every JSON / HTML delimiter, so a URL
+# embedded in a HTML-encoded JSON string can't bleed into the next key.
+# `&` is included because legit profile URLs rarely have query strings,
+# while Yandex's serialised state is full of `&utm_*` tracking params
+# that tail off into garbage.
+_URL_RE = re.compile(
+    r"https?://[^\s\"'<>&\\(){}\[\]`,;|]+",
+    re.IGNORECASE,
+)
+
+
+def _strip_url_tail(url: str) -> str:
+    """Trim trailing punctuation that almost certainly isn't part of the URL."""
+    return url.rstrip(".,);}]\\\"'/-")
 
 
 async def reverse_yandex(
@@ -507,6 +568,16 @@ async def reverse_yandex(
     photo_url: str,
     max_hits: int = 12,
 ) -> list[ReverseHit]:
+    """Scrape Yandex Images → reverse-image search results.
+
+    Yandex renders results inside a serialised JSON state blob that
+    moves around between releases. Rather than tracking that blob, we
+    HTML-unescape the body and run a tight URL regex over it; the
+    `_classify_url` filter throws away everything that isn't a public
+    profile URL on a known platform, so noisy DOM/CSS URLs are dropped.
+    """
+    import html as _html  # avoid name clash with the html.escape import
+
     target = _YANDEX_URL.format(quote(photo_url, safe=""))
     headers = {
         "User-Agent": _USER_AGENT,
@@ -526,19 +597,39 @@ async def reverse_yandex(
     except Exception:
         return []
 
-    seen: set[tuple[str, str]] = set()
+    # HTML-decode so &quot; / &amp; / &#34; etc. become real delimiters
+    # the regex can stop at — the previous version was capturing
+    # everything up to the next plain-ASCII delimiter, which dragged
+    # whole JSON strings into a single "URL".
+    decoded = _html.unescape(body)
+
+    seen: set[tuple[str, Optional[str]]] = set()
     out: list[ReverseHit] = []
-    for raw_url in _URL_RE.findall(body):
-        # Strip trailing JSON/HTML noise.
-        clean = raw_url.rstrip(".,);}]\\\"'")
-        platform, handle = _classify_url(clean)
+    for raw_url in _URL_RE.findall(decoded):
+        clean = _strip_url_tail(raw_url)
+        # Drop the query string for classification + dedup; profiles
+        # rarely need it and Yandex appends utm_* tracking that breaks
+        # dedup keys.
+        no_query = clean.split("?", 1)[0]
+        platform, handle = _classify_url(no_query)
         if not platform:
             continue
-        key = (platform, handle or clean)
+        # Need either an extractable handle or at least a non-trivial
+        # path component. A bare host like `https://github.com` isn't
+        # a hit, it's nav.
+        if not handle:
+            try:
+                if not (urlparse(no_query).path or "").strip("/"):
+                    continue
+            except ValueError:
+                continue
+        key = (platform, handle)
         if key in seen:
             continue
         seen.add(key)
-        out.append(ReverseHit(url=clean, site=platform, username=handle, source="yandex"))
+        out.append(
+            ReverseHit(url=no_query, site=platform, username=handle, source="yandex")
+        )
         if len(out) >= max_hits:
             break
     return out
@@ -650,11 +741,16 @@ async def run_deep(
     # 1. DINOv2 semantic embedding match.
     dino_pairs_out: list[tuple[int, int, float]] = []
     if options.has_dino:
-        embeds = await compute_dino_embeddings(
+        embeds, dino_diag = await compute_dino_embeddings(
             photo_urls, photo_bytes, options.hf_token,
         )
         n_embed = sum(1 for e in embeds if e)
-        ev.notes.append(f"dino: {n_embed} embedding(s)")
+        if n_embed == 0 and dino_diag.get("first_failure"):
+            ev.notes.append(
+                f"dino: 0 embeddings ({dino_diag['first_failure'][:120]})"
+            )
+        else:
+            ev.notes.append(f"dino: {n_embed} embedding(s)")
         dino_pairs_out = dino_pairs(embeds)
         for i, j, c in dino_pairs_out:
             if (i, j) not in existing_edges:
