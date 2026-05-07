@@ -2855,11 +2855,11 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     p.add_argument(
         "--photo-deep", dest="photo_deep", action="store_true", default=True,
         help="use deep photo matching (DINOv2 image embeddings + Face++ "
-             "face compare + Yandex/Bing reverse image search) on top of "
+             "face compare + Yandex reverse image search) on top of "
              "perceptual-hash clustering. ON by default. Each provider is "
              "skipped silently when its credentials aren't configured "
-             "(see --api add huggingface / facepp_key / facepp_secret / "
-             "bing_visual). Yandex reverse search needs no key.",
+             "(see --api add huggingface / facepp_key / facepp_secret). "
+             "Yandex reverse search needs no key.",
     )
     p.add_argument(
         "--no-photo-deep", dest="photo_deep", action="store_false",

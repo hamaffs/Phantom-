@@ -15,7 +15,9 @@ Three optional providers that augment the built-in phash clustering when
 
   3. Yandex reverse image search — given the strongest cluster's photo,
      find every URL on the web that hosts the same image. Surfaces
-     accounts the username scan never reached.
+     accounts the username scan never reached. Yandex is the only free
+     reverse-image option as of 2025-08; Microsoft retired the Bing
+     Search v7 (Visual Search) APIs that we previously supported.
 
 Each provider is independent and skipped when its credentials aren't
 configured. Embeddings are cached per-URL in `~/.cache/phantom/embeds/`
@@ -67,7 +69,6 @@ _FACEPP_MATCH_CONFIDENCE = 80.0
 _HF_TIMEOUT = 30.0          # HF first call cold-starts the model
 _FACEPP_TIMEOUT = 15.0
 _YANDEX_TIMEOUT = 12.0
-_BING_TIMEOUT = 12.0
 
 # HF model. DINOv2 base gives 768-dim embeddings via feature-extraction.
 _HF_MODEL = "facebook/dinov2-base"
@@ -81,9 +82,6 @@ _FACEPP_COMPARE_URL = "https://api-us.faceplusplus.com/facepp/v3/compare"
 # Yandex reverse image — public URL, no key. The HTML structure
 # changes occasionally; the regex below is intentionally loose.
 _YANDEX_URL = "https://yandex.com/images/search?rpt=imageview&url={}"
-
-# Bing Visual Search fallback (Azure free tier: 1000 calls/month).
-_BING_URL = "https://api.bing.microsoft.com/v7.0/images/visualsearch"
 
 # Concurrency caps. HF inference API rate-limits free tokens fairly
 # aggressively; keep this conservative.
@@ -107,7 +105,6 @@ class PhotoDeepOptions:
     hf_token: Optional[str] = None
     facepp_key: Optional[str] = None
     facepp_secret: Optional[str] = None
-    bing_key: Optional[str] = None  # optional; Yandex is the primary
 
     @property
     def has_dino(self) -> bool:
@@ -117,12 +114,6 @@ class PhotoDeepOptions:
     def has_facepp(self) -> bool:
         return bool(self.facepp_key) and bool(self.facepp_secret)
 
-    @property
-    def has_any(self) -> bool:
-        return self.enabled and (
-            self.has_dino or self.has_facepp or True  # Yandex always available
-        )
-
 
 @dataclass
 class ReverseHit:
@@ -130,7 +121,7 @@ class ReverseHit:
     url: str
     site: Optional[str]      # parsed platform name if recognised
     username: Optional[str]  # parsed handle if extractable
-    source: str              # "yandex" | "bing"
+    source: str              # always "yandex" — Bing's API was retired
 
 
 @dataclass
@@ -440,8 +431,14 @@ async def compute_facepp_pairs(
 
 
 # ---------------------------------------------------------------------------
-# Reverse image search (Yandex primary, Bing fallback)
+# Reverse image search (Yandex)
 # ---------------------------------------------------------------------------
+#
+# Microsoft retired the Bing Search v7 APIs (including Visual Search) on
+# 2025-08-11, so Yandex is the only free reverse-image option wired in.
+# If Yandex starts CAPTCHA-blocking, the next realistic fallback is
+# Google Cloud Vision Web Detection (paid, but $300 free credit on new
+# accounts). Add it here when needed.
 
 # Map result-URL hostnames to the platform name + a regex extracting the
 # username from the path. `None` regex = platform identified but no
@@ -547,63 +544,12 @@ async def reverse_yandex(
     return out
 
 
-async def reverse_bing(
-    session: aiohttp.ClientSession,
-    photo_url: str,
-    key: str,
-    max_hits: int = 12,
-) -> list[ReverseHit]:
-    headers = {
-        "Ocp-Apim-Subscription-Key": key,
-        "User-Agent": _USER_AGENT,
-    }
-    knowledge_request = json.dumps({
-        "imageInfo": {"url": photo_url},
-        "knowledgeRequest": {"invokedSkills": ["SimilarImages"]},
-    })
-    form = aiohttp.FormData()
-    form.add_field("knowledgeRequest", knowledge_request)
-    try:
-        async with session.post(
-            _BING_URL,
-            headers=headers,
-            data=form,
-            timeout=aiohttp.ClientTimeout(total=_BING_TIMEOUT),
-        ) as resp:
-            if resp.status != 200:
-                return []
-            payload = await resp.json()
-    except Exception:
-        return []
-
-    out: list[ReverseHit] = []
-    for tag in payload.get("tags", []):
-        for action in tag.get("actions", []):
-            for v in action.get("data", {}).get("value", []) or []:
-                u = v.get("hostPageUrl") or v.get("contentUrl")
-                if not u:
-                    continue
-                platform, handle = _classify_url(u)
-                if not platform:
-                    continue
-                out.append(ReverseHit(url=u, site=platform, username=handle, source="bing"))
-                if len(out) >= max_hits:
-                    return out
-    return out
-
-
 async def reverse_search(
     session: aiohttp.ClientSession,
     photo_url: str,
-    bing_key: Optional[str],
 ) -> list[ReverseHit]:
-    """Try Yandex first, fall back to Bing if configured and Yandex was empty."""
-    hits = await reverse_yandex(session, photo_url)
-    if hits:
-        return hits
-    if bing_key:
-        return await reverse_bing(session, photo_url, bing_key)
-    return []
+    """Run the reverse-image lookup. Currently Yandex-only."""
+    return await reverse_yandex(session, photo_url)
 
 
 # ---------------------------------------------------------------------------
@@ -738,12 +684,10 @@ async def run_deep(
     pivot = _pick_reverse_search_index(found, photo_bytes, clusters_member_indexes)
     if pivot is not None and photo_urls[pivot]:
         async with aiohttp.ClientSession() as session:
-            hits = await reverse_search(session, photo_urls[pivot], options.bing_key)
+            hits = await reverse_search(session, photo_urls[pivot])
         if hits:
             ev.reverse_hits[pivot] = hits
-            ev.notes.append(
-                f"reverse: {len(hits)} hit(s) via {hits[0].source}"
-            )
+            ev.notes.append(f"reverse: {len(hits)} hit(s) via yandex")
         else:
             ev.notes.append("reverse: no hits")
 
@@ -765,7 +709,6 @@ def options_from_apis(enabled: bool) -> PhotoDeepOptions:
         hf_token=apis.get("huggingface"),
         facepp_key=apis.get("facepp_key"),
         facepp_secret=apis.get("facepp_secret"),
-        bing_key=apis.get("bing_visual"),
     )
 
 
@@ -775,8 +718,6 @@ def configured_summary(opts: PhotoDeepOptions) -> str:
     parts.append("dino" + ("" if opts.has_dino else "(off)"))
     parts.append("facepp" + ("" if opts.has_facepp else "(off)"))
     parts.append("yandex")
-    if opts.bing_key:
-        parts.append("bing")
     return ", ".join(parts)
 
 
