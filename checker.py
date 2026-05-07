@@ -36,6 +36,7 @@ from aiohttp import ClientSession, ClientTimeout, TCPConnector
 import apis
 from enrich import extract_profile
 from identity import _normalise_country, build_overall_and_clusters
+import photo_deep
 from variants import generate as generate_variants
 from watch import (
     Snapshot, diff as compute_diff, load_history, render_diff_terminal,
@@ -1199,6 +1200,39 @@ def _attach_emails_to_found(
     return n
 
 
+def _print_deep_evidence(grouped, deep, color: bool) -> None:
+    """Surface the deep-photo notes + reverse-image hits in the terminal."""
+    notes = list(getattr(deep, "notes", []) or [])
+    reverse_hits = getattr(deep, "reverse_hits", {}) or {}
+    if not notes and not reverse_hits:
+        return
+
+    b, x, dim = _c(color, "bold"), _c(color, "reset"), _c(color, "dim")
+    g, accent = _c(color, "green"), _c(color, "yellow")
+
+    total_hits = sum(len(v) for v in reverse_hits.values())
+    print(f"\n{b}[ DEEP PHOTO ]{x}  {dim}{total_hits} reverse hit(s){x}")
+    if notes:
+        for n in notes:
+            print(f"  {dim}· {n}{x}")
+    if reverse_hits:
+        found, _, _ = _flatten(grouped)
+        for idx, hits in sorted(reverse_hits.items(), key=lambda kv: int(kv[0])):
+            try:
+                idx_i = int(idx) if isinstance(idx, str) else idx
+            except (TypeError, ValueError):
+                continue
+            pivot = (
+                found[idx_i].site
+                if 0 <= idx_i < len(found) else "?"
+            )
+            print(f"  {accent}↗{x} from {pivot}:")
+            for h in hits[:8]:
+                tag = f"{h.site}" if h.site else "?"
+                handle = f"@{h.username}" if h.username else "(no handle)"
+                print(f"    {tag:12} {handle:24} {dim}{h.url}{x}")
+
+
 def _print_emails_section(
     found: list["CheckResult"],
     emails: dict[str, dict],
@@ -1358,7 +1392,26 @@ def _flatten(grouped: list[tuple[str, list[CheckResult]]]):
     return found, unknown, missing_count
 
 
-def _build_json_payload(grouped, raw, elapsed, overall, clusters, emails=None):
+def _deep_evidence_to_dict(deep) -> Optional[dict]:
+    if deep is None:
+        return None
+    return {
+        "notes": list(getattr(deep, "notes", []) or []),
+        "extra_edges": [
+            {"i": i, "j": j, "rationale": why}
+            for (i, j, why) in (getattr(deep, "extra_edges", []) or [])
+        ],
+        "reverse_hits": {
+            str(idx): [
+                {"site": h.site, "username": h.username, "url": h.url, "source": h.source}
+                for h in hits
+            ]
+            for idx, hits in (getattr(deep, "reverse_hits", {}) or {}).items()
+        },
+    }
+
+
+def _build_json_payload(grouped, raw, elapsed, overall, clusters, emails=None, deep_evidence=None):
     found, unknown, missing_count = _flatten(grouped)
     payload = {
         "input": raw,
@@ -1382,11 +1435,13 @@ def _build_json_payload(grouped, raw, elapsed, overall, clusters, emails=None):
     }
     if emails:
         payload["emails"] = emails
+    if deep_evidence is not None:
+        payload["photo_deep"] = _deep_evidence_to_dict(deep_evidence)
     return payload
 
 
-def export_json(grouped, raw, elapsed, path: Path, overall=None, clusters=None, emails=None) -> None:
-    payload = _build_json_payload(grouped, raw, elapsed, overall, clusters or [], emails)
+def export_json(grouped, raw, elapsed, path: Path, overall=None, clusters=None, emails=None, deep_evidence=None) -> None:
+    payload = _build_json_payload(grouped, raw, elapsed, overall, clusters or [], emails, deep_evidence)
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
@@ -1987,6 +2042,8 @@ _HTML_TEMPLATE = """<!doctype html>
 
 {emails_section}
 
+{deep_section}
+
 <section>
   <div class="section-head">
     <h2>Inconclusive</h2>
@@ -2293,6 +2350,83 @@ def _html_emails_section(found: list, emails: dict) -> str:
     )
 
 
+def _html_deep_section(found: list, deep) -> str:
+    """Render the deep photo-matching evidence panel: notes (which
+    providers ran) plus reverse-image-search hits surfacing candidate
+    accounts the username scan never reached.
+    """
+    if deep is None:
+        return ""
+    notes = list(getattr(deep, "notes", []) or [])
+    reverse_hits = getattr(deep, "reverse_hits", {}) or {}
+
+    if not notes and not reverse_hits:
+        return ""
+
+    note_html = ""
+    if notes:
+        chips = "".join(
+            f'<span class="pill">{html.escape(n)}</span> '
+            for n in notes
+        )
+        note_html = f'<p class="section-note">{chips}</p>'
+
+    rows: list[str] = []
+    total_hits = 0
+    for idx_str, hits in sorted(reverse_hits.items(), key=lambda kv: int(kv[0])):
+        try:
+            idx = int(idx_str) if isinstance(idx_str, str) else idx_str
+        except (TypeError, ValueError):
+            continue
+        pivot_site = (
+            html.escape(found[idx].site)
+            if 0 <= idx < len(found) else "?"
+        )
+        for h in hits:
+            total_hits += 1
+            site = html.escape(h.site or "?")
+            handle = (
+                f'<code>{html.escape(h.username)}</code>'
+                if h.username else '<span class="dim">—</span>'
+            )
+            url_safe = html.escape(h.url, quote=True)
+            url_disp = html.escape(h.url)
+            src = html.escape(h.source)
+            rows.append(
+                f'<tr><td>{site}</td><td>{handle}</td>'
+                f'<td><a href="{url_safe}" target="_blank" rel="noopener">'
+                f'{url_disp}</a></td>'
+                f'<td><span class="dim">{src} (from {pivot_site})</span></td></tr>'
+            )
+
+    table_html = ""
+    if rows:
+        table_html = (
+            '<table class="table"><thead><tr>'
+            '<th>Site</th><th>Handle</th><th>URL</th><th>Source</th>'
+            '</tr></thead><tbody>' + "".join(rows) + '</tbody></table>'
+        )
+
+    if not note_html and not table_html:
+        return ""
+
+    return (
+        '<section>'
+        '<div class="section-head">'
+        '<h2>Deep photo matching</h2>'
+        f'<span class="count">{total_hits}</span>'
+        '</div>'
+        + note_html
+        + ('<p class="section-note">'
+           "Candidate accounts surfaced by reverse image search on the "
+           "strongest cluster's photo. These are unverified — open each "
+           "URL to confirm before treating it as the same person."
+           '</p>' if rows else "")
+        + table_html
+        + '</section>'
+    )
+
+
 def _html_unknown_row(r: CheckResult) -> str:
     target = r.url  # canonical URL for click — see _format_row note
     return (
@@ -2424,11 +2558,12 @@ def _photo_match_map(found: list, clusters) -> dict[int, list]:
     return out
 
 
-def export_html(grouped, raw, elapsed, path: Path, overall=None, clusters=None, emails=None) -> None:
+def export_html(grouped, raw, elapsed, path: Path, overall=None, clusters=None, emails=None, deep_evidence=None) -> None:
     found, unknown, missing_count = _flatten(grouped)
     clusters = clusters or []
     multi = [c for c in clusters if len(c.member_indexes) > 1]
     emails_section = _html_emails_section(found, emails) if emails else ""
+    deep_section = _html_deep_section(found, deep_evidence) if deep_evidence else ""
 
     # Two identity views, in priority order:
     #   1. The overall identity card — built from EVERY FOUND result.
@@ -2506,6 +2641,7 @@ def export_html(grouped, raw, elapsed, path: Path, overall=None, clusters=None, 
         n_missing=missing_count,
         identity_section=identity_section,
         emails_section=emails_section,
+        deep_section=deep_section,
         found_block=found_block,
         unknown_block=unknown_block,
         variants_html=variants_html,
@@ -2563,15 +2699,16 @@ def export_report(
     overall=None,
     clusters=None,
     emails=None,
+    deep_evidence=None,
 ) -> None:
     """Dispatch by extension. Defaults to JSON if the suffix is unrecognised."""
     suffix = path.suffix.lower()
     if suffix == ".html" or suffix == ".htm":
-        export_html(grouped, raw, elapsed, path, overall, clusters, emails)
+        export_html(grouped, raw, elapsed, path, overall, clusters, emails, deep_evidence)
     elif suffix == ".md" or suffix == ".markdown" or suffix == ".txt":
         export_markdown(grouped, raw, elapsed, path, overall, clusters)
     else:
-        export_json(grouped, raw, elapsed, path, overall, clusters, emails)
+        export_json(grouped, raw, elapsed, path, overall, clusters, emails, deep_evidence)
 
 
 # ---------------------------------------------------------------------------
@@ -2714,6 +2851,19 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     p.add_argument(
         "--list-variants", action="store_true",
         help="print the generated variants and exit (no network calls)",
+    )
+    p.add_argument(
+        "--photo-deep", dest="photo_deep", action="store_true", default=True,
+        help="use deep photo matching (DINOv2 image embeddings + Face++ "
+             "face compare + Yandex/Bing reverse image search) on top of "
+             "perceptual-hash clustering. ON by default. Each provider is "
+             "skipped silently when its credentials aren't configured "
+             "(see --api add huggingface / facepp_key / facepp_secret / "
+             "bing_visual). Yandex reverse search needs no key.",
+    )
+    p.add_argument(
+        "--no-photo-deep", dest="photo_deep", action="store_false",
+        help="disable deep photo matching (--photo-deep is on by default)",
     )
     p.add_argument(
         "--identity-hint", metavar="REPORT.json",
@@ -2874,7 +3024,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 emails = await discover_emails(found_for_email, hunter_key)
                 _attach_emails_to_found(results, emails)
         if args.no_identity:
-            return results, None, [], emails
+            return results, None, [], emails, None
         found_dicts: list[dict] = []
         for _, rs in results:
             for r in rs:
@@ -2883,16 +3033,19 @@ def main(argv: Optional[list[str]] = None) -> int:
         # Dedupe before correlation so a single profile reached via
         # several URL aliases doesn't inflate the photo-match cluster.
         found_dicts = _dedupe_same_site_dicts(found_dicts)
-        overall, clusters = await build_overall_and_clusters(found_dicts)
-        return results, overall, clusters, emails
+        deep_options = photo_deep.options_from_apis(enabled=args.photo_deep)
+        overall, clusters, deep_evidence = await build_overall_and_clusters(
+            found_dicts, deep_options=deep_options,
+        )
+        return results, overall, clusters, emails, deep_evidence
 
     start = time.monotonic()
-    grouped, overall, clusters, emails = asyncio.run(_scan_and_correlate())
+    grouped, overall, clusters, emails, deep_evidence = asyncio.run(_scan_and_correlate())
     elapsed = time.monotonic() - start
     cache.save()
 
     if args.as_json:
-        payload = _build_json_payload(grouped, raw, elapsed, overall, clusters, emails)
+        payload = _build_json_payload(grouped, raw, elapsed, overall, clusters, emails, deep_evidence)
         print(json.dumps(payload, indent=2))
     elif not args.quiet:
         print_compact(grouped, elapsed, color, args.found_only)
@@ -2901,6 +3054,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             _print_emails_section(found_for_print, emails, color)
         if not args.found_only:
             _print_identity_summary(overall, clusters, color)
+            if deep_evidence is not None:
+                _print_deep_evidence(grouped, deep_evidence, color)
 
     # --- Watch mode: snapshot + diff -------------------------------------
     if args.watch:
@@ -2924,7 +3079,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         export_path = resolve_export_path(args.export, raw)
         if export_path.parent and not export_path.parent.exists():
             export_path.parent.mkdir(parents=True, exist_ok=True)
-        export_report(grouped, raw, elapsed, export_path, overall, clusters, emails)
+        export_report(grouped, raw, elapsed, export_path, overall, clusters, emails, deep_evidence)
         print(
             f"{_c(color,'dim')}Report written to {export_path}{_c(color,'reset')}",
             file=sys.stderr,

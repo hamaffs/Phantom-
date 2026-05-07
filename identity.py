@@ -577,32 +577,48 @@ def _phash_bytes(data: bytes):
         return None
 
 
+async def fetch_photo_data(
+    photo_urls: Iterable[Optional[str]],
+) -> tuple[list[Optional[bytes]], list[Optional[Any]]]:
+    """Fetch raw image bytes AND their phashes in one pass.
+
+    Returns (bytes_list, phash_list) parallel to `photo_urls`. The bytes
+    are kept around so deep-matching providers (CLIP/DINO embeddings,
+    Face++) can reuse them without re-downloading.
+    """
+    urls = list(photo_urls)
+    n = len(urls)
+    if not any(urls):
+        return [None] * n, [None] * n
+
+    sem = asyncio.Semaphore(8)
+    bytes_out: list[Optional[bytes]] = [None] * n
+    hashes_out: list[Optional[Any]] = [None] * n
+
+    async with aiohttp.ClientSession() as session:
+        async def one(idx: int):
+            url = urls[idx]
+            if not url:
+                return
+            async with sem:
+                data = await _fetch_image(session, url)
+            if not data:
+                return
+            bytes_out[idx] = data
+            if HAS_IMAGES:
+                hashes_out[idx] = _phash_bytes(data)
+
+        await asyncio.gather(*(one(i) for i in range(n)))
+
+    return bytes_out, hashes_out
+
+
 async def fetch_photo_hashes(
     photo_urls: Iterable[Optional[str]],
 ) -> list[Optional[Any]]:
-    """Fetch + hash a list of profile photo URLs in parallel.
-
-    Order of the returned list matches the input. None entries indicate
-    "couldn't get a hash" — could be a missing URL, a 403, a non-image
-    response, or an unsupported format.
-    """
-    urls = list(photo_urls)
-    if not HAS_IMAGES or not any(urls):
-        return [None] * len(urls)
-
-    sem = asyncio.Semaphore(8)
-
-    async with aiohttp.ClientSession() as session:
-        async def one(u: Optional[str]):
-            if not u:
-                return None
-            async with sem:
-                data = await _fetch_image(session, u)
-            if not data:
-                return None
-            return _phash_bytes(data)
-
-        return await asyncio.gather(*(one(u) for u in urls))
+    """Back-compat wrapper around fetch_photo_data — phashes only."""
+    _, hashes = await fetch_photo_data(photo_urls)
+    return hashes
 
 
 # ---------------------------------------------------------------------------
@@ -740,7 +756,12 @@ def _aggregate(
     # Confidence: photo-matched groups of 2+ platforms = lock. Single
     # result = candidate. Name+bio matches start at 0.7 and rise with
     # member count.
-    has_photo_match = any("matching profile photo" in r for r in rationales)
+    has_photo_match = any(
+        "matching profile photo" in r
+        or "matching image content" in r
+        or "matching face" in r
+        for r in rationales
+    )
     if has_photo_match and len(members) >= 2:
         confidence = min(0.9 + 0.05 * (len(members) - 2), 1.0)
     elif has_photo_match:
@@ -775,6 +796,7 @@ def _aggregate(
 def correlate(
     found_dicts: list[dict],
     phashes: list[Optional[Any]],
+    extra_edges: Optional[list[tuple[int, int, str]]] = None,
 ) -> list[IdentityCluster]:
     """Cluster FOUND results into identity groups.
 
@@ -782,6 +804,9 @@ def correlate(
     we work on dicts to keep this module decoupled from checker.py types.
     `phashes` is the parallel-fetched hash for each result's profile
     photo (None if not available).
+    `extra_edges` is an optional list of (i, j, rationale) triples from
+    deep-matching providers (DINO/Face++); each one merges its two
+    indices into the same cluster with the given rationale string.
     """
     n = len(found_dicts)
     parent = list(range(n))
@@ -809,6 +834,12 @@ def correlate(
                 ra, rb = find(i), find(j)
                 cluster_rationale.setdefault(ra, []).extend(why)
                 cluster_rationale.setdefault(rb, []).extend(why)
+
+    for i, j, why in (extra_edges or []):
+        if 0 <= i < n and 0 <= j < n:
+            union(i, j)
+            root = find(i)
+            cluster_rationale.setdefault(root, []).append(why)
 
     photos_by_index: dict[int, str] = {}
     for i, r in enumerate(found_dicts):
@@ -905,23 +936,53 @@ async def build_identities(found: list[dict]) -> list[IdentityCluster]:
 
 async def build_overall_and_clusters(
     found: list[dict],
-) -> tuple[Optional[IdentityCluster], list[IdentityCluster]]:
+    deep_options: Optional[Any] = None,
+) -> tuple[Optional[IdentityCluster], list[IdentityCluster], Any]:
     """Run both: an overall aggregate AND per-photo clusters.
 
-    Returns (overall, clusters). The overall is built without needing
-    photo hashes (it merges everything regardless), so it works for
-    users like the friend in your test — Twitter + GitHub + nothing
-    else, where photo correlation can't fire.
+    Returns (overall, clusters, deep_evidence). `deep_evidence` is a
+    `photo_deep.DeepEvidence` instance when `deep_options` was provided
+    and at least one provider was wired up; `None` otherwise.
 
-    The per-photo clusters are still produced as a secondary view: when
-    photos match across 2+ platforms we surface "definitely same person
-    on these N sites", which adds verification on top of the global
-    aggregate.
+    Deep providers (DINOv2, Face++, reverse image search) augment the
+    phash-only clustering: they add edges where phash misses (logos
+    recoloured, selfies at different angles) and surface candidate
+    accounts the username scan never reached.
     """
     if not found:
-        return None, []
+        return None, [], None
     photo_urls = [(r.get("profile") or {}).get("photo") for r in found]
-    phashes = await fetch_photo_hashes(photo_urls)
+    photo_bytes, phashes = await fetch_photo_data(photo_urls)
     overall = aggregate_all(found)
-    clusters = correlate(found, phashes)
-    return overall, clusters
+
+    # Phase 1: phash clustering, then capture which pairs got merged.
+    phash_clusters = correlate(found, phashes)
+    existing_edges: set[tuple[int, int]] = set()
+    member_index_groups: list[list[int]] = []
+    for c in phash_clusters:
+        member_index_groups.append(list(c.member_indexes))
+        idx = sorted(c.member_indexes)
+        for i in range(len(idx)):
+            for j in range(i + 1, len(idx)):
+                existing_edges.add((idx[i], idx[j]))
+
+    deep_evidence = None
+    if deep_options is not None and getattr(deep_options, "enabled", False):
+        try:
+            import photo_deep  # local import — avoid circular at top
+            deep_evidence = await photo_deep.run_deep(
+                found, photo_urls, photo_bytes, deep_options,
+                existing_edges=existing_edges,
+                clusters_member_indexes=member_index_groups,
+            )
+        except Exception as e:  # never let deep failure kill the run
+            print(f"photo-deep: skipped due to error: {e}", file=__import__("sys").stderr)
+            deep_evidence = None
+
+    # Phase 2: re-cluster with extra edges from deep providers.
+    if deep_evidence and deep_evidence.extra_edges:
+        clusters = correlate(found, phashes, extra_edges=deep_evidence.extra_edges)
+    else:
+        clusters = phash_clusters
+
+    return overall, clusters, deep_evidence
