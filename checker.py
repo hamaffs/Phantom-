@@ -1572,7 +1572,7 @@ _HTML_TEMPLATE = """<!doctype html>
   header.top {{
     display: flex; align-items: flex-start; justify-content: space-between;
     gap: 24px;
-    padding-bottom: 18px;
+    padding-bottom: 22px;
     border-bottom: 1px solid var(--ink);
   }}
   .brand {{
@@ -1613,7 +1613,7 @@ _HTML_TEMPLATE = """<!doctype html>
     display: flex; align-items: center; gap: 26px;
   }}
   .portrait {{
-    width: 100px; height: 100px;
+    width: 120px; height: 120px;
     border-radius: 6px;
     flex-shrink: 0;
     background: var(--paper-2) center/cover no-repeat;
@@ -1623,22 +1623,22 @@ _HTML_TEMPLATE = """<!doctype html>
   }}
   .portrait .letter {{
     font-family: 'Instrument Serif', Georgia, serif;
-    font-size: 50px; color: var(--ink);
+    font-size: 60px; color: var(--ink);
     line-height: 1; letter-spacing: -0.02em;
   }}
   .ident {{ flex: 1; min-width: 0; }}
   .ident .handle {{
     font-family: 'Instrument Serif', Georgia, serif;
-    font-size: 56px; line-height: 1.05;
+    font-size: 72px; line-height: 1.05;
     letter-spacing: -0.02em; color: var(--ink);
     word-break: break-word;
   }}
   .ident .name-region {{
     font-family: 'Instrument Serif', Georgia, serif;
     font-style: italic;
-    font-size: 22px; line-height: 1.35;
+    font-size: 24px; line-height: 1.35;
     color: var(--muted);
-    margin-top: 6px;
+    margin-top: 14px;
   }}
 
   /* -------- Stats row -------- */
@@ -1651,7 +1651,7 @@ _HTML_TEMPLATE = """<!doctype html>
     align-items: center;
   }}
   .stat {{
-    padding: 22px 18px;
+    padding: 24px 18px;
     position: relative;
     text-align: left;
   }}
@@ -1661,7 +1661,7 @@ _HTML_TEMPLATE = """<!doctype html>
   }}
   .stat .n {{
     font-family: 'Instrument Serif', Georgia, serif;
-    font-size: 38px; line-height: 1.05;
+    font-size: 52px; line-height: 1.05;
     letter-spacing: -0.02em; color: var(--ink);
   }}
   .stat .l {{
@@ -1687,13 +1687,13 @@ _HTML_TEMPLATE = """<!doctype html>
   .detail-row:last-child {{ border-bottom: 0; padding-bottom: 0; }}
   .detail-row .lbl {{
     font-family: 'IBM Plex Mono', ui-monospace, monospace;
-    font-size: 10px; font-weight: 500;
+    font-size: 11px; font-weight: 500;
     text-transform: uppercase; letter-spacing: 0.18em;
     color: var(--muted);
     align-self: center;
   }}
   .detail-row .val {{
-    font-size: 14px; color: var(--ink);
+    font-size: 15px; color: var(--ink);
     line-height: 1.5; word-break: break-word;
     align-self: center;
   }}
@@ -1724,7 +1724,7 @@ _HTML_TEMPLATE = """<!doctype html>
   .acct {{
     background: var(--paper-2);
     border-radius: 6px;
-    padding: 16px;
+    padding: 20px;
     display: flex;
     gap: 14px;
     border: 1px solid var(--border);
@@ -1746,20 +1746,20 @@ _HTML_TEMPLATE = """<!doctype html>
   .acct .body {{ flex: 1; min-width: 0; display: flex; flex-direction: column; }}
   .acct .display-name {{
     font-family: 'Instrument Serif', Georgia, serif;
-    font-size: 18px; line-height: 1.2;
+    font-size: 20px; line-height: 1.2;
     color: var(--ink); letter-spacing: -0.01em;
     word-break: break-word;
   }}
   .acct .handle {{
     font-family: 'IBM Plex Mono', ui-monospace, monospace;
-    font-size: 11px; color: var(--muted);
+    font-size: 13px; color: var(--muted);
     margin-top: 2px;
     word-break: break-all;
   }}
   .acct .bio {{
-    font-size: 12px; color: var(--muted);
+    font-size: 14px; color: var(--muted);
     margin-top: 8px;
-    line-height: 1.45;
+    line-height: 1.6;
     display: -webkit-box;
     -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
@@ -1767,7 +1767,7 @@ _HTML_TEMPLATE = """<!doctype html>
   }}
   .acct .footer {{
     display: flex; align-items: center; justify-content: space-between;
-    margin-top: 10px; gap: 8px;
+    margin-top: 16px; gap: 8px;
   }}
   .acct .platform-tag {{
     font-family: 'IBM Plex Mono', ui-monospace, monospace;
@@ -1951,7 +1951,7 @@ _HTML_TEMPLATE = """<!doctype html>
 </section>
 
 <section class="accounts">
-  <div class="kicker">Confirmed presence — {n_found} of {n_total}</div>
+  <div class="kicker">Confirmed presence — {n_found} accounts</div>
   <div class="accounts-grid">{found_cards}</div>
 </section>
 
@@ -2347,7 +2347,6 @@ def export_html(grouped, raw, elapsed, path: Path, overall=None, clusters=None, 
     # --- Stats counts ---
     n_variants = len(grouped)
     n_sites = len(grouped[0][1]) if grouped and grouped[0][1] else 0
-    n_total = len(found) + len(unknown) + missing_count
 
     # --- Detail rows + cards ---
     detail_rows_html = _build_detail_rows(
@@ -2386,7 +2385,6 @@ def export_html(grouped, raw, elapsed, path: Path, overall=None, clusters=None, 
         n_identities=len(multi),
         n_variants=n_variants,
         n_sites=n_sites,
-        n_total=n_total,
         detail_rows=detail_rows_html,
         found_cards=found_cards_html,
         emails_section=emails_section,
