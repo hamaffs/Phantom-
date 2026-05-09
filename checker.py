@@ -1718,8 +1718,13 @@ _HTML_TEMPLATE = """<!doctype html>
   section.accounts {{ margin-top: 30px; }}
   .accounts-grid {{
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    /* minmax(0, 1fr) — without it, `1fr` resolves to minmax(auto, 1fr),
+       and `auto` is min-content. A long URL or display-name inside a
+       card then forces its grid cell wider than 50%, blowing the whole
+       grid past the 900px container. */
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 14px;
+    width: 100%;
   }}
   .acct {{
     background: var(--paper-2);
@@ -1728,6 +1733,8 @@ _HTML_TEMPLATE = """<!doctype html>
     display: flex;
     gap: 18px;
     border: 1px solid var(--border);
+    min-width: 0;
+    overflow: hidden;
   }}
   .acct .photo {{
     width: 72px; height: 72px;
@@ -1768,6 +1775,7 @@ _HTML_TEMPLATE = """<!doctype html>
   .acct .footer {{
     display: flex; align-items: center; justify-content: space-between;
     margin-top: 16px; gap: 8px;
+    min-width: 0;
   }}
   .acct .platform-tag {{
     font-family: 'IBM Plex Mono', ui-monospace, monospace;
