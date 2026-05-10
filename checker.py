@@ -1800,10 +1800,11 @@ _HTML_TEMPLATE = """<!doctype html>
   }}
   .acct-details {{
     font-family: 'IBM Plex Mono', ui-monospace, monospace;
-    font-size: 11px;
+    font-size: 13px;
     color: var(--muted);
-    line-height: 1.55;
+    line-height: 1.7;
     word-break: break-word;
+    margin: 4px 0;
   }}
   .acct-details b.verified-tag {{
     font-weight: 500;
