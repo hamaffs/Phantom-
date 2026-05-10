@@ -1201,38 +1201,6 @@ def _attach_emails_to_found(
     return n
 
 
-def _print_deep_evidence(grouped, deep, color: bool) -> None:
-    """Surface the deep-photo notes + reverse-image hits in the terminal."""
-    notes = list(getattr(deep, "notes", []) or [])
-    reverse_hits = getattr(deep, "reverse_hits", {}) or {}
-    if not notes and not reverse_hits:
-        return
-
-    b, x, dim = _c(color, "bold"), _c(color, "reset"), _c(color, "dim")
-    g, accent = _c(color, "green"), _c(color, "yellow")
-
-    total_hits = sum(len(v) for v in reverse_hits.values())
-    print(f"\n{b}[ DEEP PHOTO ]{x}  {dim}{total_hits} reverse hit(s){x}")
-    if notes:
-        for n in notes:
-            print(f"  {dim}· {n}{x}")
-    if reverse_hits:
-        found, _, _ = _flatten(grouped)
-        for idx, hits in sorted(reverse_hits.items(), key=lambda kv: int(kv[0])):
-            try:
-                idx_i = int(idx) if isinstance(idx, str) else idx
-            except (TypeError, ValueError):
-                continue
-            pivot = (
-                found[idx_i].site
-                if 0 <= idx_i < len(found) else "?"
-            )
-            print(f"  {accent}↗{x} from {pivot}:")
-            for h in hits[:8]:
-                tag = f"{h.site}" if h.site else "?"
-                handle = f"@{h.username}" if h.username else "(no handle)"
-                print(f"    {tag:12} {handle:24} {dim}{h.url}{x}")
-
 
 def _print_emails_section(
     found: list["CheckResult"],
@@ -1402,13 +1370,6 @@ def _deep_evidence_to_dict(deep) -> Optional[dict]:
             {"i": i, "j": j, "rationale": why}
             for (i, j, why) in (getattr(deep, "extra_edges", []) or [])
         ],
-        "reverse_hits": {
-            str(idx): [
-                {"site": h.site, "username": h.username, "url": h.url, "source": h.source}
-                for h in hits
-            ]
-            for idx, hits in (getattr(deep, "reverse_hits", {}) or {}).items()
-        },
     }
 
 
@@ -1843,15 +1804,22 @@ _HTML_TEMPLATE = """<!doctype html>
     border-radius: 3px;
     border: 1px solid var(--border);
   }}
-  .acct .url {{
+  .acct .open-btn {{
     font-family: 'IBM Plex Mono', ui-monospace, monospace;
-    font-size: 13px; color: var(--muted);
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    max-width: 60%;
-    transition: color 0.15s;
+    font-size: 12px; font-weight: 500;
+    letter-spacing: 0.04em;
+    background: var(--ink);
+    color: var(--paper);
+    padding: 8px 14px;
+    border-radius: 4px;
+    border: 0;
+    cursor: pointer;
+    text-decoration: none;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+    white-space: nowrap;
   }}
-  .acct .url:hover {{ color: var(--ink); }}
-  .acct .url .arrow {{ margin-left: 3px; }}
+  .acct .open-btn:hover {{ opacity: 0.86; transform: translateX(1px); }}
+  .acct .open-btn .arrow {{ margin-left: 4px; }}
 
   /* -------- Auxiliary panels (emails / deep / unknowns) -------- */
   section.aux {{ margin-top: 30px; }}
@@ -2029,7 +1997,6 @@ _HTML_TEMPLATE = """<!doctype html>
 </section>
 
 {emails_section}
-{deep_section}
 {unknown_section}
 
 <footer class="bottom">
@@ -2102,11 +2069,6 @@ def _html_card(r: CheckResult, photo_match: Optional[list] = None) -> str:
         f'<div class="bio">{html.escape(p["bio"])}</div>' if p.get("bio") else ""
     )
 
-    # Truncate URL for visual length while keeping it clickable.
-    visible_url = target
-    if len(visible_url) > 48:
-        visible_url = visible_url[:46] + "…"
-
     body = (
         f'<div class="body">'
         f'<div class="display-name">{html.escape(display_name)}</div>'
@@ -2114,9 +2076,10 @@ def _html_card(r: CheckResult, photo_match: Optional[list] = None) -> str:
         f'{bio_html}'
         f'<div class="footer">'
         f'<span class="platform-tag">{html.escape(r.site)}</span>'
-        f'<a class="url" href="{html.escape(target, quote=True)}" target="_blank" '
-        f'rel="noopener" title="{html.escape(target)}">'
-        f'{html.escape(visible_url)}<span class="arrow">↗</span></a>'
+        f'<a class="open-btn" href="{html.escape(target, quote=True)}" '
+        f'target="_blank" rel="noopener noreferrer" '
+        f'title="{html.escape(target)}">'
+        f'Open profile<span class="arrow">↗</span></a>'
         f'</div>'
         f'</div>'
     )
@@ -2169,70 +2132,6 @@ def _html_emails_section(found: list, emails: dict) -> str:
     )
 
 
-def _html_deep_section(found: list, deep) -> str:
-    """Deep photo-matching evidence panel — editorial restyle."""
-    if deep is None:
-        return ""
-    notes = list(getattr(deep, "notes", []) or [])
-    reverse_hits = getattr(deep, "reverse_hits", {}) or {}
-    if not notes and not reverse_hits:
-        return ""
-
-    notes_html = ""
-    if notes:
-        chips = "".join(
-            f'<span class="chip">{html.escape(n)}</span>'
-            for n in notes
-        )
-        notes_html = f'<div class="aux-notes">{chips}</div>'
-
-    rows: list[str] = []
-    total_hits = 0
-    for idx_str, hits in sorted(reverse_hits.items(), key=lambda kv: int(kv[0])):
-        try:
-            idx = int(idx_str) if isinstance(idx_str, str) else idx_str
-        except (TypeError, ValueError):
-            continue
-        pivot_site = (
-            html.escape(found[idx].site)
-            if 0 <= idx < len(found) else "?"
-        )
-        for h in hits:
-            total_hits += 1
-            site = html.escape(h.site or "?")
-            handle = (
-                f'<span class="dim">@{html.escape(h.username)}</span>'
-                if h.username else '<span class="dim">—</span>'
-            )
-            url_safe = html.escape(h.url, quote=True)
-            url_disp = html.escape(h.url[:54] + "…" if len(h.url) > 56 else h.url)
-            src_tag = html.escape(h.source)
-            rows.append(
-                f'<tr><td><span class="platform-tag">{site}</span></td>'
-                f'<td>{handle}</td>'
-                f'<td><a href="{url_safe}" target="_blank" rel="noopener">{url_disp} ↗</a></td>'
-                f'<td><span class="dim">{src_tag} from {pivot_site}</span></td></tr>'
-            )
-
-    table_html = ""
-    if rows:
-        table_html = (
-            '<table class="aux-table"><thead><tr>'
-            '<th>Site</th><th>Handle</th><th>URL</th><th>Source</th>'
-            '</tr></thead><tbody>' + "".join(rows) + '</tbody></table>'
-        )
-
-    if not notes_html and not table_html:
-        return ""
-
-    return (
-        '<section class="aux">'
-        f'<div class="kicker">Reverse image findings — {total_hits}</div>'
-        '<div class="aux-panel">'
-        + notes_html + table_html +
-        '</div></section>'
-    )
-
 
 def _html_unknown_row(r: CheckResult) -> str:
     target = r.url
@@ -2247,12 +2146,86 @@ def _html_unknown_row(r: CheckResult) -> str:
     )
 
 
-def _pick_subject_photo(overall, clusters, found) -> Optional[str]:
-    """Pick the most representative photo for the dossier hero portrait.
+# Sites whose users typically post real selfies as the avatar — break
+# ties in favour of these when several photos contain a detected face.
+_SELFIE_SITES = frozenset({
+    "Behance", "Instagram", "Twitter", "Threads", "Facebook", "LinkedIn",
+})
+# Sites that commonly carry logos or stylised avatars rather than faces.
+_LOGO_SITES = frozenset({
+    "GitHub", "Pastebin", "Disqus", "Pinterest",
+})
 
-    Preference order: largest photo-matched cluster's first photo →
-    overall identity's first photo → first FOUND result with any photo.
+
+def _site_priority(site: str) -> int:
+    """Lower = more preferred when several face photos tie on cluster size."""
+    if site in _SELFIE_SITES:
+        return 0
+    if site in _LOGO_SITES:
+        return 2
+    return 1
+
+
+def _pick_subject_photo(overall, clusters, found, face_map=None) -> Optional[str]:
+    """Pick the dossier hero portrait with face-aware priority.
+
+    Order:
+      (a) If any FOUND photo contains a detected human face, prefer the
+          face photo whose cluster covers the most sites. Ties break on
+          site reputation: selfie-leaning platforms (IG, Twitter, etc.)
+          beat logo-leaning ones (GitHub, Pinterest, Pastebin, Disqus).
+      (b) No face anywhere → fall back to the largest photo-matched
+          cluster's representative photo (the user's chosen
+          self-representation, even if it's a logo or someone else's
+          image).
+      (c) No clusters → first FOUND result with any photo.
+      (d) Nothing → None (caller renders the letter placeholder).
+
+    Only used for the big hero portrait. Per-account 64×64 cards keep
+    showing whatever each individual platform exposed.
     """
+    face_map = face_map or {}
+
+    # Cluster-coverage map: photo URL → max number of sites in any
+    # cluster that includes that photo. Used in (a) and (b).
+    coverage: dict[str, int] = {}
+    for c in (clusters or []):
+        size = len(getattr(c, "sites", None) or c.member_indexes)
+        for url in (getattr(c, "photos", []) or []):
+            if size > coverage.get(url, 0):
+                coverage[url] = size
+
+    # Build a candidate list from FOUND profiles' photos.
+    candidates: list[dict] = []
+    seen_urls: set[str] = set()
+    for r in found:
+        url = (r.profile or {}).get("photo")
+        if not url or url in seen_urls:
+            continue
+        seen_urls.add(url)
+        candidates.append({
+            "url": url,
+            "site": r.site,
+            "has_face": bool(face_map.get(url)),
+            "cluster_size": coverage.get(url, 0),
+        })
+
+    if not candidates:
+        # (c) cluster-only photo (no FOUND has a photo extracted).
+        if overall and getattr(overall, "photos", None):
+            return overall.photos[0]
+        return None
+
+    # (a) face-bearing photos win — sort by cluster size desc, then by
+    # site priority asc, then by stable order.
+    face_cands = [c for c in candidates if c["has_face"]]
+    if face_cands:
+        face_cands.sort(
+            key=lambda c: (-c["cluster_size"], _site_priority(c["site"]))
+        )
+        return face_cands[0]["url"]
+
+    # (b) no face anywhere — fall back to the largest cluster's photo.
     multi = [c for c in (clusters or []) if len(c.member_indexes) > 1]
     if multi:
         biggest = max(multi, key=lambda c: len(c.member_indexes))
@@ -2260,11 +2233,9 @@ def _pick_subject_photo(overall, clusters, found) -> Optional[str]:
             return biggest.photos[0]
     if overall and getattr(overall, "photos", None):
         return overall.photos[0]
-    for r in found:
-        photo = (r.profile or {}).get("photo")
-        if photo:
-            return photo
-    return None
+
+    # (c) first FOUND profile with any photo.
+    return candidates[0]["url"]
 
 
 def _subject_handle(raw: str, found) -> str:
@@ -2466,14 +2437,14 @@ def _html_unknown_section(unknown: list) -> str:
     )
 
 
-def export_html(grouped, raw, elapsed, path: Path, overall=None, clusters=None, emails=None, deep_evidence=None) -> None:
+def export_html(grouped, raw, elapsed, path: Path, overall=None, clusters=None, emails=None, deep_evidence=None, face_map=None) -> None:
     found, unknown, missing_count = _flatten(grouped)
     clusters = clusters or []
     multi = [c for c in clusters if len(c.member_indexes) > 1]
 
     # --- Subject hero ---
     subject_handle = _subject_handle(raw, found)
-    portrait_url = _pick_subject_photo(overall, clusters, found)
+    portrait_url = _pick_subject_photo(overall, clusters, found, face_map)
     subject_portrait_html = _html_subject_portrait(portrait_url, subject_handle)
 
     # Italic line under the @handle — display name only. Region is
@@ -2504,7 +2475,6 @@ def export_html(grouped, raw, elapsed, path: Path, overall=None, clusters=None, 
 
     # --- Auxiliary panels ---
     emails_section = _html_emails_section(found, emails) if emails else ""
-    deep_section = _html_deep_section(found, deep_evidence) if deep_evidence else ""
     unknown_section_html = _html_unknown_section(unknown)
 
     # --- File metadata ---
@@ -2530,7 +2500,6 @@ def export_html(grouped, raw, elapsed, path: Path, overall=None, clusters=None, 
         detail_rows=detail_rows_html,
         found_cards=found_cards_html,
         emails_section=emails_section,
-        deep_section=deep_section,
         unknown_section=unknown_section_html,
     )
     path.write_text(page, encoding="utf-8")
@@ -2587,11 +2556,12 @@ def export_report(
     clusters=None,
     emails=None,
     deep_evidence=None,
+    face_map=None,
 ) -> None:
     """Dispatch by extension. Defaults to JSON if the suffix is unrecognised."""
     suffix = path.suffix.lower()
     if suffix == ".html" or suffix == ".htm":
-        export_html(grouped, raw, elapsed, path, overall, clusters, emails, deep_evidence)
+        export_html(grouped, raw, elapsed, path, overall, clusters, emails, deep_evidence, face_map)
     elif suffix == ".md" or suffix == ".markdown" or suffix == ".txt":
         export_markdown(grouped, raw, elapsed, path, overall, clusters)
     else:
@@ -2911,7 +2881,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 emails = await discover_emails(found_for_email, hunter_key)
                 _attach_emails_to_found(results, emails)
         if args.no_identity:
-            return results, None, [], emails, None
+            return results, None, [], emails, None, {}
         found_dicts: list[dict] = []
         for _, rs in results:
             for r in rs:
@@ -2921,13 +2891,13 @@ def main(argv: Optional[list[str]] = None) -> int:
         # several URL aliases doesn't inflate the photo-match cluster.
         found_dicts = _dedupe_same_site_dicts(found_dicts)
         deep_options = photo_deep.options_from_apis(enabled=args.photo_deep)
-        overall, clusters, deep_evidence = await build_overall_and_clusters(
+        overall, clusters, deep_evidence, face_map = await build_overall_and_clusters(
             found_dicts, deep_options=deep_options,
         )
-        return results, overall, clusters, emails, deep_evidence
+        return results, overall, clusters, emails, deep_evidence, face_map
 
     start = time.monotonic()
-    grouped, overall, clusters, emails, deep_evidence = asyncio.run(_scan_and_correlate())
+    grouped, overall, clusters, emails, deep_evidence, face_map = asyncio.run(_scan_and_correlate())
     elapsed = time.monotonic() - start
     cache.save()
 
@@ -2941,8 +2911,6 @@ def main(argv: Optional[list[str]] = None) -> int:
             _print_emails_section(found_for_print, emails, color)
         if not args.found_only:
             _print_identity_summary(overall, clusters, color)
-            if deep_evidence is not None:
-                _print_deep_evidence(grouped, deep_evidence, color)
 
     # --- Watch mode: snapshot + diff -------------------------------------
     if args.watch:
@@ -2966,7 +2934,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         export_path = resolve_export_path(args.export, raw)
         if export_path.parent and not export_path.parent.exists():
             export_path.parent.mkdir(parents=True, exist_ok=True)
-        export_report(grouped, raw, elapsed, export_path, overall, clusters, emails, deep_evidence)
+        export_report(grouped, raw, elapsed, export_path, overall, clusters, emails, deep_evidence, face_map)
         print(
             f"{_c(color,'dim')}Report written to {export_path}{_c(color,'reset')}",
             file=sys.stderr,

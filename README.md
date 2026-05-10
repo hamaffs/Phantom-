@@ -68,7 +68,7 @@ phantom/
 ├── identity.py         # cross-platform identity correlation (perceptual photo hashing + name/bio overlap)
 ├── watch.py            # snapshot + diff for --watch mode
 ├── sites.json          # 60 site definitions (data, no code)
-├── requirements.txt    # aiohttp, aiodns, brotli, curl_cffi, Pillow, imagehash
+├── requirements.txt    # aiohttp, aiodns, brotli, curl_cffi, Pillow, imagehash, opencv-python
 └── README.md
 ```
 
@@ -309,6 +309,21 @@ A secondary "definitely the same person" view, only shown when 2+ accounts share
 4. Each group ships with a confidence score and a rationale (`"matching profile photo (hamming=2)"`, `"identical display name + bio overlap 0.61"`).
 
 **Privacy note:** identity correlation downloads the public profile photo URLs that are *already in* the SSR'd HTML you scraped during the scan. No auth, no API keys, no cookies. The hashes stay local and aren't sent anywhere. Disable the whole step with `--no-identity` if you don't want photos fetched.
+
+### Hero portrait selection (face-aware)
+
+The big subject portrait at the top of the HTML report is picked with face awareness so a real selfie wins over a logo when both exist. Logic:
+
+1. Run OpenCV's frontal-face Haar cascade against every fetched profile photo (cached per URL for the rest of the run). If any photo contains a detected face, prefer the one whose photo cluster covers the most sites; ties break in favour of selfie-leaning platforms (Behance, Instagram, Twitter, Threads, Facebook, LinkedIn) over logo-leaning ones (GitHub, Pastebin, Disqus, Pinterest).
+2. If no photo has a face, fall back to the largest photo-matched cluster's representative photo — the user's chosen self-representation, even if it's a logo, artwork, or a non-self picture (e.g. an album cover, a rapper photo).
+3. If there are no clusters at all, take the first FOUND profile that has any photo.
+4. If nothing exists, render a serif letter placeholder.
+
+This logic only drives the hero. The 64×64 per-account cards keep showing whatever each platform exposed.
+
+### Reverse image search (removed)
+
+A previous version included a Yandex-scrape reverse image step under `--photo-deep`. It was removed because the matches were too often visually-similar but unrelated images (logos, default avatars, font samples) rather than identity matches. DINOv2 embeddings and Face++ comparison still run when their API keys are configured; only the reverse image step is gone.
 
 ### Canonical URLs for click links
 

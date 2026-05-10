@@ -48,6 +48,67 @@ except ImportError:  # pragma: no cover — deps optional but in requirements
     imagehash = None  # type: ignore
     HAS_IMAGES = False
 
+try:
+    import cv2  # type: ignore
+    import numpy as _np  # type: ignore
+    HAS_CV2 = True
+except ImportError:  # pragma: no cover — opencv-python is in requirements
+    cv2 = None  # type: ignore
+    _np = None  # type: ignore
+    HAS_CV2 = False
+
+# Per-process cache for face-detection results, keyed by photo URL.
+# OpenCV's Haar cascade load + per-image scan is ~30–80ms; cache so a
+# rerun of `_pick_subject_photo` (or any future caller) is instant.
+_FACE_CACHE: dict[str, bool] = {}
+_FACE_CASCADE = None  # lazily loaded on first call
+
+
+def _load_face_cascade():
+    """Lazy-load the bundled Haar frontal-face cascade once per process."""
+    global _FACE_CASCADE
+    if _FACE_CASCADE is not None or not HAS_CV2:
+        return _FACE_CASCADE
+    try:
+        path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+        _FACE_CASCADE = cv2.CascadeClassifier(path)
+        if _FACE_CASCADE.empty():
+            _FACE_CASCADE = None
+    except Exception:
+        _FACE_CASCADE = None
+    return _FACE_CASCADE
+
+
+def has_human_face(image_bytes: Optional[bytes], cache_key: Optional[str] = None) -> bool:
+    """True if OpenCV's frontal-face Haar detector finds at least one
+    face in `image_bytes`. False on any failure (missing cv2, undecodable
+    image, no detection). When `cache_key` is provided (typically the
+    photo URL), the result is memoised for the rest of the process so
+    repeat calls are free.
+    """
+    if cache_key is not None and cache_key in _FACE_CACHE:
+        return _FACE_CACHE[cache_key]
+    result = False
+    if HAS_CV2 and image_bytes and len(image_bytes) >= 200:
+        cascade = _load_face_cascade()
+        if cascade is not None:
+            try:
+                arr = _np.frombuffer(image_bytes, dtype=_np.uint8)
+                gray = cv2.imdecode(arr, cv2.IMREAD_GRAYSCALE)
+                if gray is not None:
+                    faces = cascade.detectMultiScale(
+                        gray,
+                        scaleFactor=1.1,
+                        minNeighbors=5,
+                        minSize=(40, 40),
+                    )
+                    result = len(faces) > 0
+            except Exception:
+                result = False
+    if cache_key is not None:
+        _FACE_CACHE[cache_key] = result
+    return result
+
 
 # Hamming distance threshold below which two phashes are considered
 # "the same image". 64-bit phash → distances 0–10 mean "identical or
@@ -937,30 +998,39 @@ async def build_identities(found: list[dict]) -> list[IdentityCluster]:
 async def build_overall_and_clusters(
     found: list[dict],
     deep_options: Optional[Any] = None,
-) -> tuple[Optional[IdentityCluster], list[IdentityCluster], Any]:
+) -> tuple[Optional[IdentityCluster], list[IdentityCluster], Any, dict[str, bool]]:
     """Run both: an overall aggregate AND per-photo clusters.
 
-    Returns (overall, clusters, deep_evidence). `deep_evidence` is a
-    `photo_deep.DeepEvidence` instance when `deep_options` was provided
-    and at least one provider was wired up; `None` otherwise.
+    Returns (overall, clusters, deep_evidence, face_map). `deep_evidence`
+    is a `photo_deep.DeepEvidence` instance when `deep_options` was
+    provided and at least one provider was wired up; `None` otherwise.
+    `face_map` is a `{photo_url: has_face}` dict computed via OpenCV's
+    Haar cascade — empty if cv2 isn't installed or no photos resolved.
 
-    Deep providers (DINOv2, Face++, reverse image search) augment the
-    phash-only clustering: they add edges where phash misses (logos
-    recoloured, selfies at different angles) and surface candidate
-    accounts the username scan never reached.
+    Deep providers (DINOv2, Face++) augment the phash-only clustering:
+    they add edges where phash misses (logos recoloured, selfies at
+    different angles).
     """
     if not found:
-        return None, [], None
+        return None, [], None, {}
     photo_urls = [(r.get("profile") or {}).get("photo") for r in found]
     photo_bytes, phashes = await fetch_photo_data(photo_urls)
+
+    # Detect faces once per URL; cached so any caller (e.g.
+    # _pick_subject_photo) can call has_human_face(url) cheaply later.
+    face_map: dict[str, bool] = {}
+    if HAS_CV2:
+        for url, data in zip(photo_urls, photo_bytes):
+            if not url:
+                continue
+            face_map[url] = has_human_face(data, cache_key=url)
+
     overall = aggregate_all(found)
 
     # Phase 1: phash clustering, then capture which pairs got merged.
     phash_clusters = correlate(found, phashes)
     existing_edges: set[tuple[int, int]] = set()
-    member_index_groups: list[list[int]] = []
     for c in phash_clusters:
-        member_index_groups.append(list(c.member_indexes))
         idx = sorted(c.member_indexes)
         for i in range(len(idx)):
             for j in range(i + 1, len(idx)):
@@ -973,7 +1043,6 @@ async def build_overall_and_clusters(
             deep_evidence = await photo_deep.run_deep(
                 found, photo_urls, photo_bytes, deep_options,
                 existing_edges=existing_edges,
-                clusters_member_indexes=member_index_groups,
             )
         except Exception as e:  # never let deep failure kill the run
             print(f"photo-deep: skipped due to error: {e}", file=__import__("sys").stderr)
@@ -985,4 +1054,4 @@ async def build_overall_and_clusters(
     else:
         clusters = phash_clusters
 
-    return overall, clusters, deep_evidence
+    return overall, clusters, deep_evidence, face_map
