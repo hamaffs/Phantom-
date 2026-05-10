@@ -68,7 +68,7 @@ phantom/
 ├── identity.py         # cross-platform identity correlation (perceptual photo hashing + name/bio overlap)
 ├── watch.py            # snapshot + diff for --watch mode
 ├── sites.json          # 60 site definitions (data, no code)
-├── requirements.txt    # aiohttp, aiodns, brotli, curl_cffi, Pillow, imagehash, opencv-python
+├── requirements.txt    # aiohttp, aiodns, brotli, curl_cffi, Pillow, imagehash, opencv-python, playwright
 └── README.md
 ```
 
@@ -82,6 +82,8 @@ python3 -m venv .venv
 ```
 
 `curl_cffi` is required for the ~20 sites flagged with `tls_fingerprint` (Twitter, Instagram, Threads, Reddit, TikTok, …). Without it those sites will return `[   ?   ]`.
+
+`playwright` is required only for `--export pdf`. After `pip install -r requirements.txt`, run `playwright install chromium` once to download the browser binary.
 
 ### Make `phantom` callable from anywhere
 
@@ -138,8 +140,14 @@ phantom <username> --json > results.json
 phantom <username> --export html             # → <username>_report.html in cwd
 phantom <username> --export json             # → <username>_report.json in cwd
 phantom <username> --export md               # → <username>_report.md in cwd
+phantom <username> --export pdf              # → <username>_report.pdf in cwd
 phantom <username> --export reports/         # → reports/<username>_report.json
 phantom <username> --export out.html         # exact path; written as-is
+
+# Theme flags for HTML and PDF exports (light is the default)
+phantom <username> --export html --dark      # dark-themed HTML report
+phantom <username> --export pdf --light      # light-themed PDF (explicit, same as default)
+phantom <username> --export html             # light HTML with in-browser toggle button
 
 # Disable curl_cffi impersonation (sites flagged tls_fingerprint will likely fail)
 phantom <username> --no-impersonate
@@ -149,9 +157,10 @@ phantom <username> --no-impersonate
 
 | Extension | Output |
 | --- | --- |
-| `.html`, `.htm` | Self-contained HTML report styled like a modern intelligence dashboard (deep-navy background, Inter + JetBrains Mono, glass-blur surfaces, soft-purple accent — no terminal/matrix aesthetic). Header pill-stats summarise the scan; **every FOUND profile renders as its own card** with photo header, platform badge, verified/private overlay, display name, handle, bio, location/joined/website/language meta chips, full stats row (followers, following, posts, hearts, lists, views, …), and an "Open profile" button. Cards that share a profile photo cross-reference each other with a 📷 badge linking to the related accounts. Unknown results in a clean table below. |
-| `.json` | Single object with `input`, `summary`, `found` (each with a nested `profile` object), `unknown`, and the list of generated variants. |
-| `.md`, `.markdown`, `.txt` | Markdown report with FOUND, UNKNOWN, and a missing-count footer. |
+| `.html`, `.htm` | Self-contained HTML report with dossier aesthetic (cream `#f5efe2` background, Instrument Serif + IBM Plex Mono + IBM Plex Sans). Stats header, portrait, confirmed account cards with photos. Includes a **☀/☾ theme toggle button** (top-right) that swaps between light and dark themes instantly — no reload, persisted in `localStorage`. Inconclusive results are not shown in the file (they are shown in the terminal). |
+| `.pdf` | Pixel-faithful rendering of the HTML report via Playwright (Chromium). Same fonts, colors, layout, and photos. Respects `--dark`/`--light` flags. Requires `playwright` (`pip install playwright && playwright install chromium`). |
+| `.json` | Single object with `input`, `summary` (includes inconclusive count), `found` (each with a nested `profile` object), and the list of generated variants. Inconclusive results are not enumerated (count only in summary). |
+| `.md`, `.markdown`, `.txt` | Markdown report with FOUND section and a missing-count footer. Inconclusive results are not listed (count only in summary). |
 
 `.json` is the default if the extension isn't recognised. All enrichment data (photos, names, bios, counts) is extracted from the SSR'd HTML during the scan, so no extra HTTP requests are made for the report.
 
@@ -194,8 +203,10 @@ Every extracted bio also runs through a **language detector** (script-based for 
 | `--watch` | off | Snapshot the FOUND set and diff against the previous run for the same input. Snapshots live in `~/.cache/phantom/snapshots/`. |
 | `--quiet` | off | Suppress the regular scan output. With `--watch`, only the diff is printed (or nothing if there are no changes). Designed for cron. |
 | `--found-only` | off | Print only hits (suppress the `[ ? ]` section). |
-| `--json` | off | Emit JSON to stdout (single object: `input`, `summary`, `found`, `unknown`, `variants`). |
-| `--export FILE` | off | Write a structured report. Format inferred from extension (`.html` / `.json` / `.md`). |
+| `--json` | off | Emit JSON to stdout (single object: `input`, `summary`, `found`, `variants`). |
+| `--export FILE` | off | Write a structured report. Format inferred from extension (`.html` / `.json` / `.md` / `.pdf`). |
+| `--dark` | off | Use dark theme for HTML/PDF exports. Mutually exclusive with `--light`. |
+| `--light` | off | Use light theme for HTML/PDF exports (default — same as omitting both flags). |
 | `--no-color` | off | Disable ANSI colors (auto-disabled when stdout is not a TTY). |
 
 ## Output legend

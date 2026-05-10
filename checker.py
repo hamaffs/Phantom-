@@ -1393,7 +1393,6 @@ def _build_json_payload(grouped, raw, elapsed, overall, clusters, emails=None, d
             c.to_dict() for c in (clusters or []) if len(c.member_indexes) > 1
         ],
         "found": [asdict(r) for r in found],
-        "unknown": [asdict(r) for r in unknown],
     }
     if emails:
         payload["emails"] = emails
@@ -1476,22 +1475,14 @@ def export_markdown(grouped, raw, elapsed, path: Path, overall=None, clusters=No
             lines.append(f"- [{r.site}]({target}){tag}")
     else:
         lines.append("_None._")
-    lines += ["", f"## Unknown ({len(unknown)})", ""]
-    if unknown:
-        for r in unknown:
-            target = r.url
-            note = f" ({r.reason})" if r.reason else ""
-            tag = f" — `{r.variant}`" if r.variant else ""
-            lines.append(f"- [{r.site}]({target}){note}{tag}")
-    else:
-        lines.append("_None._")
     lines += ["", f"## Missing", "", f"{missing_count} sites cleanly returned not-found."]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 _HTML_TEMPLATE = """<!doctype html>
-<html lang="en">
+<html lang="en" data-theme="{theme}">
 <head>
+<script>(function(){{try{{var t=localStorage.getItem('phantom-theme');if(t)document.documentElement.setAttribute('data-theme',t);}}catch(e){{}}}})();</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Phantom — {raw_html}</title>
@@ -1500,15 +1491,31 @@ _HTML_TEMPLATE = """<!doctype html>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {{
-    --paper:    #f5efe2;
-    --paper-2:  #ebe1cd;
-    --ink:      #1a1612;
-    --muted:    #6b5f4d;
-    --rule:     #c4b896;
-    --border:   #d4c9b3;
+    --bg:        #f5efe2;
+    --paper:     #f5efe2;
+    --paper-2:   #ebe1cd;
+    --ink:       #1a1612;
+    --muted:     #6b5f4d;
+    --rule:      #c4b896;
+    --border:    #d4c9b3;
+    --btn-bg:    #1a1612;
+    --btn-text:  #f5efe2;
+    --btn-hover: #2e2620;
+  }}
+  [data-theme="dark"] {{
+    --bg:        #16140f;
+    --paper:     #2a2620;
+    --paper-2:   #23201a;
+    --ink:       #f0e8d8;
+    --muted:     #9a8d75;
+    --rule:      #3a342a;
+    --border:    #3a342a;
+    --btn-bg:    #f0e8d8;
+    --btn-text:  #16140f;
+    --btn-hover: #d8ccb8;
   }}
   * {{ box-sizing: border-box; }}
-  html, body {{ background: var(--paper); }}
+  html, body {{ background: var(--bg); }}
   body {{
     margin: 0; color: var(--ink);
     font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
@@ -1522,6 +1529,31 @@ _HTML_TEMPLATE = """<!doctype html>
   .mono {{
     font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
     font-feature-settings: "ss01", "ss02";
+  }}
+  .ghost path {{ fill: var(--ink); }}
+  .ghost circle {{ fill: var(--bg); }}
+
+  /* -------- Theme toggle -------- */
+  .header-right {{
+    display: flex; align-items: flex-start; gap: 12px;
+  }}
+  .theme-toggle {{
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 13px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 5px 9px;
+    border-radius: 4px;
+    cursor: pointer;
+    line-height: 1;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }}
+  .theme-toggle:hover {{
+    border-color: var(--ink);
+    color: var(--ink);
+    background: var(--paper-2);
   }}
 
   .page {{
@@ -1831,8 +1863,8 @@ _HTML_TEMPLATE = """<!doctype html>
     font-family: 'IBM Plex Mono', ui-monospace, monospace;
     font-size: 13px; font-weight: 500;
     letter-spacing: 0.04em;
-    background: var(--ink);
-    color: var(--paper);
+    background: var(--btn-bg);
+    color: var(--btn-text);
     padding: 14px 16px;
     border-radius: 6px;
     border: 0;
@@ -1841,7 +1873,7 @@ _HTML_TEMPLATE = """<!doctype html>
     transition: background 0.15s ease;
     margin-top: auto;
   }}
-  .acct .open-btn:hover {{ background: #2e2620; }}
+  .acct .open-btn:hover {{ background: var(--btn-hover); }}
   .acct .open-btn .arrow {{ margin-left: 4px; }}
 
   /* -------- Auxiliary panels (emails / deep / unknowns) -------- */
@@ -1940,6 +1972,7 @@ _HTML_TEMPLATE = """<!doctype html>
   @media (max-width: 760px) {{
     .page {{ padding: 28px 18px; }}
     header.top {{ flex-direction: column; gap: 14px; }}
+    .header-right {{ justify-content: flex-end; }}
     .file-meta {{ text-align: left; }}
     .portrait {{ width: 96px; height: 96px; }}
     .portrait .letter {{ font-size: 50px; }}
@@ -1956,6 +1989,26 @@ _HTML_TEMPLATE = """<!doctype html>
     .accounts-grid {{ grid-template-columns: 1fr; }}
   }}
 </style>
+<script>
+(function(){{
+  var btn = document.getElementById('theme-toggle');
+  if (!btn) return;
+  function applyTheme(t) {{
+    document.documentElement.setAttribute('data-theme', t);
+    btn.textContent = t === 'dark' ? '☾' : '☀';
+  }}
+  var init;
+  try {{ init = localStorage.getItem('phantom-theme'); }} catch(e) {{}}
+  if (!init) init = document.documentElement.getAttribute('data-theme') || 'light';
+  applyTheme(init);
+  btn.addEventListener('click', function() {{
+    var cur = document.documentElement.getAttribute('data-theme') || 'light';
+    var next = cur === 'dark' ? 'light' : 'dark';
+    applyTheme(next);
+    try {{ localStorage.setItem('phantom-theme', next); }} catch(e) {{}}
+  }});
+}})();
+</script>
 </head>
 <body>
 <div class="page">
@@ -1969,10 +2022,13 @@ _HTML_TEMPLATE = """<!doctype html>
     </svg>
     <span class="wordmark">Phantom</span>
   </div>
-  <div class="file-meta">
-    <div>File <span class="num">N° {file_number}</span></div>
-    <div>{generated_date} · {generated_time} UTC</div>
-    <div>Scan time {elapsed:.1f}s</div>
+  <div class="header-right">
+    {toggle_button}
+    <div class="file-meta">
+      <div>File <span class="num">N° {file_number}</span></div>
+      <div>{generated_date} · {generated_time} UTC</div>
+      <div>Scan time {elapsed:.1f}s</div>
+    </div>
   </div>
 </header>
 
@@ -2020,7 +2076,6 @@ _HTML_TEMPLATE = """<!doctype html>
 </section>
 
 {emails_section}
-{unknown_section}
 
 <footer class="bottom">
   <div>Generated by Phantom</div>
@@ -2560,8 +2615,8 @@ def _html_unknown_section(unknown: list) -> str:
     )
 
 
-def export_html(grouped, raw, elapsed, path: Path, overall=None, clusters=None, emails=None, deep_evidence=None, face_map=None) -> None:
-    found, unknown, missing_count = _flatten(grouped)
+def export_html(grouped, raw, elapsed, path: Path, overall=None, clusters=None, emails=None, deep_evidence=None, face_map=None, dark=False, include_toggle=True) -> None:
+    found, _, missing_count = _flatten(grouped)
     clusters = clusters or []
     multi = [c for c in clusters if len(c.member_indexes) > 1]
 
@@ -2598,7 +2653,13 @@ def export_html(grouped, raw, elapsed, path: Path, overall=None, clusters=None, 
 
     # --- Auxiliary panels ---
     emails_section = _html_emails_section(found, emails) if emails else ""
-    unknown_section_html = _html_unknown_section(unknown)
+
+    # --- Theme ---
+    theme = "dark" if dark else "light"
+    toggle_button = (
+        '<button id="theme-toggle" class="theme-toggle" title="Toggle theme">☀</button>'
+        if include_toggle else ""
+    )
 
     # --- File metadata ---
     now = datetime.now(timezone.utc)
@@ -2623,15 +2684,53 @@ def export_html(grouped, raw, elapsed, path: Path, overall=None, clusters=None, 
         detail_rows=detail_rows_html,
         found_cards=found_cards_html,
         emails_section=emails_section,
-        unknown_section=unknown_section_html,
+        theme=theme,
+        toggle_button=toggle_button,
     )
     path.write_text(page, encoding="utf-8")
+
+
+def export_pdf(grouped, raw, elapsed, path: Path, overall=None, clusters=None, emails=None, deep_evidence=None, face_map=None, dark=False) -> None:
+    """Render the HTML report to PDF via playwright (Chromium)."""
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        print(
+            "error: PDF export requires playwright.\n"
+            "  Install with: pip install playwright && playwright install chromium",
+            file=sys.stderr,
+        )
+        return
+    import tempfile
+    html_path = Path(tempfile.mktemp(suffix=".html"))
+    try:
+        export_html(
+            grouped, raw, elapsed, html_path,
+            overall, clusters, emails, deep_evidence, face_map,
+            dark=dark, include_toggle=False,
+        )
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch()
+            page = browser.new_page()
+            page.set_viewport_size({"width": 1100, "height": 768})
+            page.goto(f"file://{html_path.resolve()}", wait_until="networkidle")
+            page.pdf(
+                path=str(path),
+                width="1100px",
+                print_background=True,
+                margin={"top": "0px", "right": "0px", "bottom": "0px", "left": "0px"},
+            )
+            browser.close()
+    finally:
+        if html_path.exists():
+            html_path.unlink()
 
 
 _FORMAT_ALIASES = {
     "html": ".html", "htm": ".html",
     "json": ".json",
     "md": ".md", "markdown": ".md", "txt": ".md",
+    "pdf": ".pdf",
 }
 
 _SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
@@ -2680,11 +2779,14 @@ def export_report(
     emails=None,
     deep_evidence=None,
     face_map=None,
+    dark: bool = False,
 ) -> None:
     """Dispatch by extension. Defaults to JSON if the suffix is unrecognised."""
     suffix = path.suffix.lower()
     if suffix == ".html" or suffix == ".htm":
-        export_html(grouped, raw, elapsed, path, overall, clusters, emails, deep_evidence, face_map)
+        export_html(grouped, raw, elapsed, path, overall, clusters, emails, deep_evidence, face_map, dark=dark)
+    elif suffix == ".pdf":
+        export_pdf(grouped, raw, elapsed, path, overall, clusters, emails, deep_evidence, face_map, dark=dark)
     elif suffix == ".md" or suffix == ".markdown" or suffix == ".txt":
         export_markdown(grouped, raw, elapsed, path, overall, clusters)
     else:
@@ -2857,10 +2959,19 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     p.add_argument("--json", dest="as_json", action="store_true", help="emit JSON results to stdout")
     p.add_argument(
         "--export", metavar="FILE_OR_FORMAT",
-        help="write a structured report. Pass a format ('html', 'json', 'md') "
+        help="write a structured report. Pass a format ('html', 'json', 'md', 'pdf') "
              "and the file is auto-named '<input>_report.<ext>' in the cwd. "
              "Pass a path with extension (e.g. 'reports/out.html') to write "
              "exactly there.",
+    )
+    _theme = p.add_mutually_exclusive_group()
+    _theme.add_argument(
+        "--dark", action="store_true",
+        help="use dark theme for HTML/PDF exports (default is light)",
+    )
+    _theme.add_argument(
+        "--light", action="store_true",
+        help="use light theme for HTML/PDF exports (default)",
     )
     p.add_argument("--no-color", action="store_true")
     return p.parse_args(argv)
@@ -3057,7 +3168,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         export_path = resolve_export_path(args.export, raw)
         if export_path.parent and not export_path.parent.exists():
             export_path.parent.mkdir(parents=True, exist_ok=True)
-        export_report(grouped, raw, elapsed, export_path, overall, clusters, emails, deep_evidence, face_map)
+        export_report(grouped, raw, elapsed, export_path, overall, clusters, emails, deep_evidence, face_map, dark=args.dark)
         print(
             f"{_c(color,'dim')}Report written to {export_path}{_c(color,'reset')}",
             file=sys.stderr,
