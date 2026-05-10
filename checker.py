@@ -1746,12 +1746,23 @@ _HTML_TEMPLATE = """<!doctype html>
   .acct {{
     background: var(--paper-2);
     border-radius: 6px;
-    padding: 20px;
+    padding: 20px 20px 24px;
     display: flex;
-    gap: 18px;
+    flex-direction: column;
+    gap: 14px;
     border: 1px solid var(--border);
     min-width: 0;
     overflow: hidden;
+  }}
+  .acct-head {{
+    display: flex;
+    gap: 18px;
+    align-items: flex-start;
+    min-width: 0;
+  }}
+  .acct-head-text {{
+    flex: 1;
+    min-width: 0;
   }}
   .acct .photo {{
     width: 64px; height: 64px;
@@ -1767,7 +1778,6 @@ _HTML_TEMPLATE = """<!doctype html>
     font-size: 30px; color: var(--ink);
     line-height: 1; letter-spacing: -0.02em;
   }}
-  .acct .body {{ flex: 1; min-width: 0; display: flex; flex-direction: column; }}
   .acct .display-name {{
     font-family: 'Instrument Serif', Georgia, serif;
     font-size: 22px; line-height: 1.2;
@@ -1782,17 +1792,25 @@ _HTML_TEMPLATE = """<!doctype html>
   }}
   .acct .bio {{
     font-size: 15px; color: var(--muted);
-    margin-top: 12px;
     line-height: 1.6;
     display: -webkit-box;
     -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
   }}
-  .acct .footer {{
-    display: flex; align-items: center; justify-content: space-between;
-    margin-top: 16px; gap: 8px;
-    min-width: 0;
+  .acct-details {{
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.55;
+    word-break: break-word;
+  }}
+  .acct-details b.verified-tag {{
+    font-weight: 500;
+    color: var(--ink);
+  }}
+  .acct-meta-row {{
+    display: block;
   }}
   .acct .platform-tag {{
     font-family: 'IBM Plex Mono', ui-monospace, monospace;
@@ -1805,20 +1823,24 @@ _HTML_TEMPLATE = """<!doctype html>
     border: 1px solid var(--border);
   }}
   .acct .open-btn {{
+    display: block;
+    width: 100%;
+    text-align: center;
+    box-sizing: border-box;
     font-family: 'IBM Plex Mono', ui-monospace, monospace;
-    font-size: 12px; font-weight: 500;
+    font-size: 13px; font-weight: 500;
     letter-spacing: 0.04em;
     background: var(--ink);
     color: var(--paper);
-    padding: 8px 14px;
-    border-radius: 4px;
+    padding: 14px 16px;
+    border-radius: 6px;
     border: 0;
     cursor: pointer;
     text-decoration: none;
-    transition: opacity 0.15s ease, transform 0.15s ease;
-    white-space: nowrap;
+    transition: background 0.15s ease;
+    margin-top: auto;
   }}
-  .acct .open-btn:hover {{ opacity: 0.86; transform: translateX(1px); }}
+  .acct .open-btn:hover {{ background: #2e2620; }}
   .acct .open-btn .arrow {{ margin-left: 4px; }}
 
   /* -------- Auxiliary panels (emails / deep / unknowns) -------- */
@@ -2040,14 +2062,60 @@ def _format_joined(s) -> Optional[str]:
             return None
 
 
+def _format_profile_details(profile: dict) -> str:
+    """Render the per-card details strip — followers / following / posts /
+    hearts / joined / verified / public-private — bullet-separated.
+
+    Each field is skipped silently if the platform didn't surface it.
+    Returns the empty string when nothing's available so the card can
+    omit the row entirely. Numeric counts go through `_format_count`
+    (12345 → '12.3K'); joined dates go through `_format_joined`. The
+    verified flag renders bolder than the rest of the strip; private/
+    public is shown as plain text.
+    """
+    p = profile or {}
+    bits: list[str] = []
+
+    if p.get("followers") is not None:
+        bits.append(f"{html.escape(_format_count(p['followers']))} followers")
+    if p.get("following") is not None:
+        bits.append(f"{html.escape(_format_count(p['following']))} following")
+    if p.get("posts") is not None:
+        bits.append(f"{html.escape(_format_count(p['posts']))} posts")
+    if p.get("hearts") is not None:
+        bits.append(f"{html.escape(_format_count(p['hearts']))} hearts")
+
+    joined = _format_joined(p.get("joined")) or p.get("joined")
+    if joined:
+        bits.append(f"joined {html.escape(str(joined))}")
+
+    if p.get("verified") is True:
+        bits.append('<b class="verified-tag">verified ✓</b>')
+
+    if p.get("private") is True:
+        bits.append("private")
+    elif p.get("private") is False:
+        bits.append("public")
+
+    if not bits:
+        return ""
+    return f'<div class="acct-details">{" · ".join(bits)}</div>'
+
+
 def _html_card(r: CheckResult, photo_match: Optional[list] = None) -> str:
     """Render one FOUND profile as an editorial dossier account card.
 
-    Layout (left to right):
-      [56x56 photo]  display name (Instrument Serif)
-                     @handle (Plex Mono muted)
-                     bio (sans muted, clamped to 3 lines)
-                     [platform tag]               [url ↗]
+    Vertical flow:
+      ┌────────────────────────────────────┐
+      │ [photo]  display name              │  ← header row
+      │          @handle                   │
+      │  bio                               │
+      │  details · followers · joined …    │
+      │  [platform tag]                    │
+      │ ┌────────────────────────────────┐ │
+      │ │       Open profile  ↗          │ │  ← full-width CTA
+      │ └────────────────────────────────┘ │
+      └────────────────────────────────────┘
     """
     p = r.profile or {}
     target = r.url
@@ -2068,22 +2136,36 @@ def _html_card(r: CheckResult, photo_match: Optional[list] = None) -> str:
     bio_html = (
         f'<div class="bio">{html.escape(p["bio"])}</div>' if p.get("bio") else ""
     )
+    details_html = _format_profile_details(p)
 
-    body = (
-        f'<div class="body">'
+    head = (
+        '<div class="acct-head">'
+        f'{photo_html}'
+        '<div class="acct-head-text">'
         f'<div class="display-name">{html.escape(display_name)}</div>'
         f'<div class="handle">{html.escape(handle)}</div>'
-        f'{bio_html}'
-        f'<div class="footer">'
+        '</div>'
+        '</div>'
+    )
+
+    meta_row = (
+        '<div class="acct-meta-row">'
         f'<span class="platform-tag">{html.escape(r.site)}</span>'
+        '</div>'
+    )
+
+    button = (
         f'<a class="open-btn" href="{html.escape(target, quote=True)}" '
         f'target="_blank" rel="noopener noreferrer" '
         f'title="{html.escape(target)}">'
-        f'Open profile<span class="arrow">↗</span></a>'
-        f'</div>'
-        f'</div>'
+        f'Open profile <span class="arrow">↗</span></a>'
     )
-    return f'<div class="acct">{photo_html}{body}</div>'
+
+    return (
+        '<div class="acct">'
+        f'{head}{bio_html}{details_html}{meta_row}{button}'
+        '</div>'
+    )
 
 
 def _html_emails_section(found: list, emails: dict) -> str:
@@ -2169,25 +2251,30 @@ def _site_priority(site: str) -> int:
 def _pick_subject_photo(overall, clusters, found, face_map=None) -> Optional[str]:
     """Pick the dossier hero portrait with face-aware priority.
 
-    Order:
-      (a) If any FOUND photo contains a detected human face, prefer the
-          face photo whose cluster covers the most sites. Ties break on
-          site reputation: selfie-leaning platforms (IG, Twitter, etc.)
-          beat logo-leaning ones (GitHub, Pinterest, Pastebin, Disqus).
-      (b) No face anywhere → fall back to the largest photo-matched
-          cluster's representative photo (the user's chosen
-          self-representation, even if it's a logo or someone else's
-          image).
-      (c) No clusters → first FOUND result with any photo.
-      (d) Nothing → None (caller renders the letter placeholder).
+    Order (highest priority first):
+      (a) Photos with a detected human face — sort by cluster size desc,
+          then by site priority asc (Behance/IG/Twitter/Threads/FB/
+          LinkedIn beat GitHub/Pastebin/Disqus/Pinterest beat neutral).
+      (b) No face detected anywhere, BUT a selfie-site photo is
+          available — Behance, Instagram, etc. are very likely real
+          even when Haar misses the face (off-angle, small crop, hat,
+          glasses, partial occlusion). Prefer the selfie-site photo
+          over a logo-site or generic-avatar photo. Sort by cluster
+          size desc, then site priority asc.
+      (c) No selfie-site photo either → largest photo-matched cluster's
+          representative photo (the user's chosen self-representation,
+          logo or otherwise).
+      (d) No clusters → first FOUND profile with any photo.
+      (e) Nothing → None (caller renders the letter placeholder).
 
-    Only used for the big hero portrait. Per-account 64×64 cards keep
-    showing whatever each individual platform exposed.
+    Only drives the big hero portrait. Per-account 64×64 cards keep
+    showing whatever each platform exposed. Logs every candidate +
+    selection reason to stderr so future mismatches are debuggable.
     """
     face_map = face_map or {}
 
     # Cluster-coverage map: photo URL → max number of sites in any
-    # cluster that includes that photo. Used in (a) and (b).
+    # cluster that includes that photo. Used by (a) and (b) sorts.
     coverage: dict[str, int] = {}
     for c in (clusters or []):
         size = len(getattr(c, "sites", None) or c.member_indexes)
@@ -2208,34 +2295,69 @@ def _pick_subject_photo(overall, clusters, found, face_map=None) -> Optional[str
             "site": r.site,
             "has_face": bool(face_map.get(url)),
             "cluster_size": coverage.get(url, 0),
+            "is_selfie_site": r.site in _SELFIE_SITES,
+            "is_logo_site": r.site in _LOGO_SITES,
         })
 
+    # Debug logging: every candidate + their decision-relevant fields.
+    if candidates:
+        print(
+            f"[portrait] evaluating {len(candidates)} candidate(s):",
+            file=sys.stderr,
+        )
+        for c in candidates:
+            url_short = c["url"] if len(c["url"]) <= 70 else c["url"][:67] + "…"
+            tag = ""
+            if c["is_selfie_site"]:
+                tag = " (selfie-site)"
+            elif c["is_logo_site"]:
+                tag = " (logo-site)"
+            print(
+                f"[portrait]   {c['site']:13} face={'yes' if c['has_face'] else 'no ':<3} "
+                f"cluster={c['cluster_size']}{tag} {url_short}",
+                file=sys.stderr,
+            )
+
+    def _log(reason: str, url: str) -> str:
+        url_short = url if len(url) <= 70 else url[:67] + "…"
+        print(f"[portrait] selected ({reason}): {url_short}", file=sys.stderr)
+        return url
+
     if not candidates:
-        # (c) cluster-only photo (no FOUND has a photo extracted).
         if overall and getattr(overall, "photos", None):
-            return overall.photos[0]
+            return _log("overall.photos[0], no candidates", overall.photos[0])
+        print("[portrait] selected: none (no photos available)", file=sys.stderr)
         return None
 
-    # (a) face-bearing photos win — sort by cluster size desc, then by
-    # site priority asc, then by stable order.
+    # (a) face-bearing photos: cluster size desc, site priority asc.
     face_cands = [c for c in candidates if c["has_face"]]
     if face_cands:
         face_cands.sort(
             key=lambda c: (-c["cluster_size"], _site_priority(c["site"]))
         )
-        return face_cands[0]["url"]
+        return _log("face detected", face_cands[0]["url"])
 
-    # (b) no face anywhere — fall back to the largest cluster's photo.
+    # (b) No face anywhere — but selfie-site photos are still very
+    # likely real (Haar misses faces routinely on creative profile
+    # angles). Prefer them over logo-leaning sites.
+    selfie_cands = [c for c in candidates if c["is_selfie_site"]]
+    if selfie_cands:
+        selfie_cands.sort(
+            key=lambda c: (-c["cluster_size"], _site_priority(c["site"]))
+        )
+        return _log("selfie-site (no face detected)", selfie_cands[0]["url"])
+
+    # (c) largest photo-matched cluster's representative photo.
     multi = [c for c in (clusters or []) if len(c.member_indexes) > 1]
     if multi:
         biggest = max(multi, key=lambda c: len(c.member_indexes))
         if biggest.photos:
-            return biggest.photos[0]
+            return _log("largest cluster", biggest.photos[0])
     if overall and getattr(overall, "photos", None):
-        return overall.photos[0]
+        return _log("overall.photos[0]", overall.photos[0])
 
-    # (c) first FOUND profile with any photo.
-    return candidates[0]["url"]
+    # (d) first FOUND profile with any photo.
+    return _log("first candidate", candidates[0]["url"])
 
 
 def _subject_handle(raw: str, found) -> str:

@@ -98,9 +98,9 @@ def has_human_face(image_bytes: Optional[bytes], cache_key: Optional[str] = None
                 if gray is not None:
                     faces = cascade.detectMultiScale(
                         gray,
-                        scaleFactor=1.1,
+                        scaleFactor=1.05,
                         minNeighbors=5,
-                        minSize=(40, 40),
+                        minSize=(20, 20),
                     )
                     result = len(faces) > 0
             except Exception:
