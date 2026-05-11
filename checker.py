@@ -35,6 +35,8 @@ import aiohttp
 from aiohttp import ClientSession, ClientTimeout, TCPConnector
 
 import apis
+import confidence as _confidence
+from confidence import TIER_VERIFIED, TIER_LIKELY, TIER_IMPOSTOR
 from enrich import extract_profile
 from identity import _normalise_country, build_overall_and_clusters
 import photo_deep
@@ -135,6 +137,8 @@ class CheckResult:
     backend: str = "aiohttp"        # which HTTP client handled the request
     profile: dict = field(default_factory=dict)  # display name, bio, photo, follower counts… if FOUND
     variant: Optional[str] = None   # which generated variant produced this
+    score: Optional[int] = None     # confidence score 0–100 (set by confidence.py after scan)
+    tier: Optional[str] = None      # 'verified_identity' | 'likely_match' | 'possible_impostor'
 
 
 # ---------------------------------------------------------------------------
@@ -751,10 +755,14 @@ def _format_row(r: CheckResult, color: bool, show_variant: bool) -> str:
     if r.reason and r.reason != f"{r.status}":
         note_parts.append(r.reason)
     note = f" {_c(color,'dim')}({', '.join(note_parts)}){_c(color,'reset')}" if note_parts else ""
+    score_tag = (
+        f"  {_c(color,'dim')}(score {r.score}){_c(color,'reset')}"
+        if r.score is not None else ""
+    )
     tag = ""
     if show_variant and r.variant:
         tag = f"  {_c(color,'yellow')}[{r.variant}]{_c(color,'reset')}"
-    return f"  {site} {url_part}{note}{tag}"
+    return f"  {site} {url_part}{note}{score_tag}{tag}"
 
 
 def _print_identity_summary(overall, clusters, color: bool) -> None:
@@ -814,45 +822,72 @@ def print_compact(
     elapsed: float,
     color: bool,
     found_only: bool,
+    show_all: bool = False,
 ) -> None:
-    """One FOUND section, one UNKNOWN section, MISSING as a count.
+    """Three-tier FOUND output: verified / likely / possible-impostor.
 
-    `grouped` is [(variant, [CheckResult, ...])] — but the user wants the
-    output flattened across variants, with each row tagged by which variant
-    produced it.
+    `grouped` is [(variant, [CheckResult, ...])] — flattened and deduped
+    inside, with each row tagged by which variant produced it.
     """
     show_variant = len(grouped) > 1
-    # `_flatten` runs the same-profile dedup so the terminal count
-    # matches the exported report; otherwise `[ FOUND ] N` would still
-    # include the alias duplicates (Facebook accepting several URL
-    # patterns for one profile).
     found, unknown, missing_count = _flatten(grouped)
 
     g, r_, y, b, x = (
         _c(color, "green"), _c(color, "red"), _c(color, "yellow"),
         _c(color, "bold"), _c(color, "reset"),
     )
+    dim = _c(color, "dim")
 
-    if found:
-        print(f"\n{b}{g}[ FOUND ]{x}{b} {len(found)}{x}")
-        for r in found:
-            print(_format_row(r, color, show_variant))
+    # Split by tier (results without scores keep their original flat order).
+    scored = any(r.tier is not None for r in found)
+    if scored:
+        verified  = sorted([r for r in found if r.tier == TIER_VERIFIED],
+                           key=lambda r: -(r.score or 0))
+        likely    = sorted([r for r in found if r.tier == TIER_LIKELY],
+                           key=lambda r: -(r.score or 0))
+        impostors = sorted([r for r in found if r.tier == TIER_IMPOSTOR],
+                           key=lambda r: -(r.score or 0))
+        # Unscored results (--no-identity path) treated as likely.
+        unscored  = [r for r in found if r.tier is None]
+        likely    = likely + unscored
     else:
+        # Fallback: show everything as a flat FOUND block.
+        verified, likely, impostors = [], found, []
+
+    if verified:
+        print(f"\n{b}{g}[ VERIFIED IDENTITY ]{x}{b} {len(verified)}{x}")
+        for r in verified:
+            print(_format_row(r, color, show_variant))
+
+    if likely:
+        print(f"\n{b}{g}[ LIKELY MATCH ]{x}{b} {len(likely)}{x}")
+        for r in likely:
+            print(_format_row(r, color, show_variant))
+
+    if not verified and not likely and not impostors:
         print(f"\n{b}{g}[ FOUND ]{x}{b} 0{x}")
 
+    if impostors:
+        if show_all:
+            print(f"\n{b}{y}[ POSSIBLE IMPOSTOR ]{x}{b} {len(impostors)}{x}")
+            for r in impostors:
+                print(_format_row(r, color, show_variant))
+        else:
+            print(
+                f"\n{b}{y}[ POSSIBLE IMPOSTOR ]{x}{b} {len(impostors)}{x}  "
+                f"{dim}(use --show-all to display){x}"
+            )
+
     if not found_only:
-        # Both [ ? ] and [MISSING] are shown as counts only — the per-row
-        # detail is in the JSON/HTML/Markdown export. Keeps the terminal
-        # readable on multi-variant runs where unknowns can hit the hundreds.
         print(f"\n{b}{y}[   ?   ]{x}{b} {len(unknown)}{x}  "
-              f"{_c(color,'dim')}(use --export to see details){x}")
+              f"{dim}(use --export to see details){x}")
         print(f"{b}{r_}[MISSING]{x}{b} {missing_count}{x}")
 
     sys.stdout.flush()  # noqa: F841
     total = len(found) + len(unknown) + missing_count
     n_variants = len(grouped)
     suffix = f"across {n_variants} variant{'s' if n_variants != 1 else ''}"
-    print(f"\n{_c(color,'dim')}{total} checks {suffix} in {elapsed:.1f}s{x}", file=sys.stderr)
+    print(f"\n{dim}{total} checks {suffix} in {elapsed:.1f}s{x}", file=sys.stderr)
 
 
 # ---------------------------------------------------------------------------
@@ -1464,18 +1499,40 @@ def export_markdown(grouped, raw, elapsed, path: Path, overall=None, clusters=No
             lines += _md_identity_block(
                 c, f"### Match {i}: {c.display_name or '(no name)'}"
             )
-    lines += [
-        f"## Found ({len(found)})",
-        "",
-    ]
-    if found:
-        for r in found:
-            target = r.url  # canonical URL — see _format_row note
-            tag = f" — `{r.variant}`" if r.variant else ""
-            lines.append(f"- [{r.site}]({target}){tag}")
+    # Group by tier if scores were computed.
+    scored = any(r.tier is not None for r in found)
+    if scored and found:
+        v = sorted([r for r in found if r.tier == TIER_VERIFIED], key=lambda r: -(r.score or 0))
+        l = sorted([r for r in found if r.tier == TIER_LIKELY],   key=lambda r: -(r.score or 0))
+        imp = sorted([r for r in found if r.tier == TIER_IMPOSTOR], key=lambda r: -(r.score or 0))
+        l += [r for r in found if r.tier is None]
+
+        def _md_rows(rs: list) -> list[str]:
+            out = []
+            for r in rs:
+                tag = f" — `{r.variant}`" if r.variant else ""
+                score_tag = f" (score {r.score})" if r.score is not None else ""
+                out.append(f"- [{r.site}]({r.url}){tag}{score_tag}")
+            return out
+
+        if v:
+            lines += [f"## Verified identity ({len(v)})", ""] + _md_rows(v) + [""]
+        if l:
+            lines += [f"## Likely match ({len(l)})", ""] + _md_rows(l) + [""]
+        if imp:
+            lines += [f"## Possible impostor ({len(imp)})", ""] + _md_rows(imp) + [""]
     else:
-        lines.append("_None._")
-    lines += ["", f"## Missing", "", f"{missing_count} sites cleanly returned not-found."]
+        lines += [f"## Found ({len(found)})", ""]
+        if found:
+            for r in found:
+                tag = f" — `{r.variant}`" if r.variant else ""
+                score_tag = f" (score {r.score})" if r.score is not None else ""
+                lines.append(f"- [{r.site}]({r.url}){tag}{score_tag}")
+        else:
+            lines.append("_None._")
+        lines.append("")
+
+    lines += [f"## Missing", "", f"{missing_count} sites cleanly returned not-found."]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -1501,6 +1558,8 @@ _HTML_TEMPLATE = """<!doctype html>
     --btn-bg:    #1a1612;
     --btn-text:  #f5efe2;
     --btn-hover: #2e2620;
+    --err:       #8a3a2e;
+    --tier-verified: #3d6b4a;
   }}
   [data-theme="dark"] {{
     --bg:        #16140f;
@@ -1509,10 +1568,12 @@ _HTML_TEMPLATE = """<!doctype html>
     --ink:       #f0e8d8;
     --muted:     #9a8d75;
     --rule:      #3a342a;
+    --tier-verified: #6aaa7c;
     --border:    #3a342a;
     --btn-bg:    #f0e8d8;
     --btn-text:  #16140f;
     --btn-hover: #d8ccb8;
+    --err:       #d4826f;
   }}
   * {{ box-sizing: border-box; }}
   html, body {{ background: var(--bg); }}
@@ -1843,7 +1904,19 @@ _HTML_TEMPLATE = """<!doctype html>
     color: var(--ink);
   }}
   .acct-meta-row {{
-    display: block;
+    display: flex; align-items: center; gap: 6px;
+  }}
+  .tier-dot {{
+    width: 7px; height: 7px;
+    border-radius: 50%; flex-shrink: 0;
+    display: inline-block; vertical-align: middle;
+  }}
+  .tier-verified {{ background: var(--tier-verified); }}
+  .score-chip {{
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 10px; color: var(--muted);
+    margin-left: auto;
+    letter-spacing: 0.04em;
   }}
   .acct .platform-tag {{
     font-family: 'IBM Plex Mono', ui-monospace, monospace;
@@ -1904,7 +1977,7 @@ _HTML_TEMPLATE = """<!doctype html>
   }}
   .aux-table td {{ color: var(--ink); }}
   .aux-table .dim {{ color: var(--muted); }}
-  .aux-table .err {{ color: #8a3a2e; }}
+  .aux-table .err {{ color: var(--err); }}
   .aux-table .platform-tag {{
     font-family: 'IBM Plex Mono', ui-monospace, monospace;
     font-size: 10px; font-weight: 500;
@@ -1990,7 +2063,7 @@ _HTML_TEMPLATE = """<!doctype html>
   }}
 </style>
 <script>
-(function(){{
+document.addEventListener('DOMContentLoaded', function() {{
   var btn = document.getElementById('theme-toggle');
   if (!btn) return;
   function applyTheme(t) {{
@@ -2007,7 +2080,7 @@ _HTML_TEMPLATE = """<!doctype html>
     applyTheme(next);
     try {{ localStorage.setItem('phantom-theme', next); }} catch(e) {{}}
   }});
-}})();
+}});
 </script>
 </head>
 <body>
@@ -2072,7 +2145,7 @@ _HTML_TEMPLATE = """<!doctype html>
 
 <section class="accounts">
   <div class="kicker">Confirmed presence — {n_found} accounts</div>
-  <div class="accounts-grid">{found_cards}</div>
+  {found_section}
 </section>
 
 {emails_section}
@@ -2158,7 +2231,8 @@ def _format_profile_details(profile: dict) -> str:
     return f'<div class="acct-details">{" · ".join(bits)}</div>'
 
 
-def _html_card(r: CheckResult, photo_match: Optional[list] = None) -> str:
+def _html_card(r: CheckResult, photo_match: Optional[list] = None,
+               tier: Optional[str] = None) -> str:
     """Render one FOUND profile as an editorial dossier account card.
 
     Vertical flow:
@@ -2167,7 +2241,7 @@ def _html_card(r: CheckResult, photo_match: Optional[list] = None) -> str:
       │          @handle                   │
       │  bio                               │
       │  details · followers · joined …    │
-      │  [platform tag]                    │
+      │  [platform tag]  [●] [score N]     │
       │ ┌────────────────────────────────┐ │
       │ │       Open profile  ↗          │ │  ← full-width CTA
       │ └────────────────────────────────┘ │
@@ -2204,9 +2278,21 @@ def _html_card(r: CheckResult, photo_match: Optional[list] = None) -> str:
         '</div>'
     )
 
+    # Tier dot: small green circle for verified identity.
+    effective_tier = tier or r.tier
+    dot_html = (
+        '<span class="tier-dot tier-verified" title="Verified identity"></span>'
+        if effective_tier == TIER_VERIFIED else ""
+    )
+    # Score chip.
+    score_html = (
+        f'<span class="score-chip">{r.score}</span>'
+        if r.score is not None else ""
+    )
     meta_row = (
         '<div class="acct-meta-row">'
         f'<span class="platform-tag">{html.escape(r.site)}</span>'
+        f'{dot_html}{score_html}'
         '</div>'
     )
 
@@ -2642,13 +2728,41 @@ def export_html(grouped, raw, elapsed, path: Path, overall=None, clusters=None, 
     detail_rows_html = _build_detail_rows(
         overall, found, [v for v, _ in grouped]
     )
+    # --- Account cards grouped by confidence tier ---
     if found:
-        found_cards_html = "".join(_html_card(r) for r in found)
+        scored_html = any(r.tier is not None for r in found)
+        if scored_html:
+            v_cards = [r for r in found if r.tier == TIER_VERIFIED]
+            l_cards = [r for r in found if r.tier == TIER_LIKELY]
+            i_cards = [r for r in found if r.tier == TIER_IMPOSTOR]
+            # Unscored (--no-identity) treated as likely.
+            l_cards += [r for r in found if r.tier is None]
+        else:
+            v_cards, l_cards, i_cards = [], found, []
+
+        # Primary grid: verified (with dot) + likely (no indicator).
+        primary_html = (
+            "".join(_html_card(r, tier=TIER_VERIFIED) for r in v_cards)
+            + "".join(_html_card(r) for r in l_cards)
+        )
+        found_section_html = f'<div class="accounts-grid">{primary_html}</div>'
+
+        if i_cards:
+            impostor_inner = "".join(_html_card(r) for r in i_cards)
+            found_section_html += (
+                '<details class="unknown-fold" style="margin-top:18px">'
+                f'<summary>Possible impostors ({len(i_cards)})</summary>'
+                '<div class="aux-panel" style="margin-top:14px">'
+                f'<div class="accounts-grid">{impostor_inner}</div>'
+                '</div>'
+                '</details>'
+            )
     else:
-        found_cards_html = (
+        found_section_html = (
+            '<div class="accounts-grid">'
             '<div class="acct" style="grid-column:1/-1;justify-content:center">'
             '<div class="body"><div class="bio">No confirmed accounts.</div></div>'
-            '</div>'
+            '</div></div>'
         )
 
     # --- Auxiliary panels ---
@@ -2682,7 +2796,7 @@ def export_html(grouped, raw, elapsed, path: Path, overall=None, clusters=None, 
         n_sites=n_sites,
         photo_match_block=photo_match_block,
         detail_rows=detail_rows_html,
-        found_cards=found_cards_html,
+        found_section=found_section_html,
         emails_section=emails_section,
         theme=theme,
         toggle_button=toggle_button,
@@ -2956,6 +3070,11 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
              "name-derived handle.",
     )
     p.add_argument("--found-only", action="store_true", help="only print hits")
+    p.add_argument(
+        "--show-all", action="store_true",
+        help="include 'possible impostor' accounts in terminal output "
+             "(default: show count only)",
+    )
     p.add_argument("--json", dest="as_json", action="store_true", help="emit JSON results to stdout")
     p.add_argument(
         "--export", metavar="FILE_OR_FORMAT",
@@ -3135,11 +3254,20 @@ def main(argv: Optional[list[str]] = None) -> int:
     elapsed = time.monotonic() - start
     cache.save()
 
+    # Compute confidence scores and attach tier labels to every FOUND result.
+    # Done once here so all output paths (terminal, HTML, JSON, Markdown) share
+    # the same scores without recomputing.
+    _found_for_scoring, _, _ = _flatten(grouped)
+    if _found_for_scoring:
+        subject_name = getattr(overall, "display_name", None) or ""
+        _confidence.score_all(_found_for_scoring, clusters or [], subject_name, raw)
+
     if args.as_json:
         payload = _build_json_payload(grouped, raw, elapsed, overall, clusters, emails, deep_evidence)
         print(json.dumps(payload, indent=2))
     elif not args.quiet:
-        print_compact(grouped, elapsed, color, args.found_only)
+        print_compact(grouped, elapsed, color, args.found_only,
+                      show_all=getattr(args, "show_all", False))
         if emails:
             found_for_print, _, _ = _flatten(grouped)
             _print_emails_section(found_for_print, emails, color)

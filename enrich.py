@@ -426,9 +426,16 @@ def extract_github(body: str, username: str) -> dict:
 # YouTube
 # ---------------------------------------------------------------------------
 
-_YT_SUBS_RE = re.compile(
-    r'"subscriberCountText":\s*\{[^}]*?'
-    r'"(?:simpleText|accessibility)"[^}]*?"(?:simpleText|label)":\s*"([^"]+)"',
+# Plain-string form (About section): "subscriberCountText":"110M subscribers"
+# This is the canonical channel-level count. Prefer it over the structured form,
+# which appears in video-card contexts and may belong to a sub-channel.
+_YT_SUBS_PLAIN_RE = re.compile(
+    r'"subscriberCountText"\s*:\s*"([^"]+)"',
+    re.IGNORECASE,
+)
+# Structured fallback: {"simpleText":"1.2M subscribers"} or accessibility label.
+_YT_SUBS_STRUCT_RE = re.compile(
+    r'"subscriberCountText"\s*:\s*\{[^{]*?"(?:simpleText|label)"\s*:\s*"([^"]+)"',
     re.IGNORECASE,
 )
 _YT_VIDEOS_RE = re.compile(
@@ -436,23 +443,40 @@ _YT_VIDEOS_RE = re.compile(
 )
 _YT_VIEWS_RE = re.compile(r'"viewCountText":\s*"([\d,. ]+)\s*views?"')
 _YT_COUNTRY_RE = re.compile(r'"country":\s*"([^"]+)"')
+# joinedDateText uses "content" in newer layouts, "text" in older ones.
 _YT_JOINED_RE = re.compile(
-    r'"joinedDateText":\s*\{[^}]*?"text":\s*"Joined\s+([^"]+)"'
+    r'"joinedDateText"\s*:\s*\{[^{]*?"(?:text|content)"\s*:\s*"Joined\s+([^"]+)"'
 )
-_YT_DESC_RE = re.compile(r'"description":\s*"((?:\\.|[^"\\])*)"')
+_YT_DESC_RE = re.compile(r'"description":\s*"((?:\\\\.|[^"\\\\])*)"')
+# Verified channels have an accessibility label ending with ", Verified".
+_YT_VERIFIED_RE = re.compile(
+    r'"accessibilityContext"\s*:\s*\{"label"\s*:\s*"[^"]+,\s*Verified"\}',
+    re.IGNORECASE,
+)
 
 
 def extract_youtube(body: str, username: str) -> dict:
     info = extract_meta(body, f"https://www.youtube.com/@{username}")
-    m = _YT_SUBS_RE.search(body)
+
+    # --- Subscriber count ---
+    # Prefer the plain-string form; it appears in the About section and always
+    # reflects the full channel count. The structured form appears earlier in
+    # video-card contexts and may belong to a sub-channel with a far lower count.
+    subs_raw: Optional[str] = None
+    m = _YT_SUBS_PLAIN_RE.search(body)
     if m:
-        # The string is something like "29.5M subscribers" or "1,234 subscribers".
-        raw = m.group(1)
-        # Strip trailing 'subscribers'
-        clean = re.sub(r"\s*subscribers?\s*", "", raw, flags=re.I).strip()
+        subs_raw = m.group(1)
+    else:
+        m = _YT_SUBS_STRUCT_RE.search(body)
+        if m:
+            subs_raw = m.group(1)
+    if subs_raw:
+        clean = re.sub(r"\s*subscribers?\s*", "", subs_raw, flags=re.I).strip()
         n = _parse_human_number(clean)
         if n is not None:
             info["followers"] = n  # subs are followers
+
+    # --- Video count, views, country, joined date, description ---
     m = _YT_VIDEOS_RE.search(body)
     if m:
         n = _parse_human_number(m.group(1))
@@ -473,6 +497,11 @@ def extract_youtube(body: str, username: str) -> dict:
             info["bio"] = json.loads(f'"{m.group(1)}"')
         except Exception:
             info["bio"] = m.group(1)
+
+    # --- Verified badge ---
+    if _YT_VERIFIED_RE.search(body):
+        info["verified"] = True
+
     return info
 
 
@@ -799,6 +828,308 @@ def extract_behance(body: str, username: str) -> dict:
     return info
 
 
+# ---------------------------------------------------------------------------
+# Linktree
+# ---------------------------------------------------------------------------
+
+_LINKTREE_NEXT_RE = re.compile(
+    r'<script[^>]*\bid=["\']__NEXT_DATA__["\'][^>]*>(.*?)</script>',
+    re.DOTALL,
+)
+
+
+def extract_linktree(body: str, username: str) -> dict:
+    """Linktree: parse __NEXT_DATA__ for links list, bio, and avatar.
+
+    The og:image is a generated OG preview card, not a real avatar — skip it
+    and use account.profilePictureUrl instead.
+    """
+    info: dict = {}
+    m = _LINKTREE_NEXT_RE.search(body)
+    if not m:
+        return info
+    try:
+        data = json.loads(m.group(1))
+    except Exception:
+        return info
+    pp = data.get("props", {}).get("pageProps", {}) or {}
+    acct = pp.get("account", {}) or {}
+
+    page_title = (pp.get("pageTitle") or "").strip().lstrip("@")
+    if page_title:
+        info["display_name"] = page_title
+
+    desc = (pp.get("description") or "").strip()
+    if desc:
+        info["bio"] = desc
+
+    photo = acct.get("profilePictureUrl") or ""
+    if photo:
+        info["photo"] = photo
+
+    links_raw = pp.get("links") or []
+    links = []
+    for lnk in links_raw:
+        if not isinstance(lnk, dict):
+            continue
+        url = (lnk.get("url") or "").strip()
+        title = (lnk.get("title") or "").strip()
+        if url.startswith("http"):
+            entry: dict = {"url": url}
+            if title:
+                entry["title"] = title
+            links.append(entry)
+    if links:
+        info["links"] = links
+        info["link_count"] = len(links)
+
+    social_raw = pp.get("socialLinks") or []
+    socials = []
+    for s in social_raw:
+        if not isinstance(s, dict):
+            continue
+        url = s.get("url") or ""
+        platform = s.get("type") or s.get("platform") or ""
+        if url:
+            entry = {"url": url}
+            if platform:
+                entry["platform"] = platform
+            socials.append(entry)
+    if socials:
+        info["social_links"] = socials
+
+    return info
+
+
+# ---------------------------------------------------------------------------
+# Beacons
+# ---------------------------------------------------------------------------
+
+_BEACONS_TITLE_RE = re.compile(
+    r'^(.*?)\s*\(@[^)]+\)\s*\|(.*?)\|\s*Beacons\s*$',
+    re.IGNORECASE,
+)
+
+
+def extract_beacons(body: str, username: str) -> dict:
+    """Beacons: og:title encodes the display name and linked platforms.
+
+    Format: "displayname (@handle) | Platform1, Platform2 | Beacons"
+    """
+    info = extract_meta(body, f"https://beacons.ai/{username}")
+    title = (info.get("display_name") or "").strip()
+    m = _BEACONS_TITLE_RE.match(title)
+    if m:
+        display = m.group(1).strip()
+        if display:
+            info["display_name"] = display
+        platforms_str = m.group(2).strip()
+        if platforms_str:
+            platforms = [p.strip() for p in platforms_str.split(",") if p.strip()]
+            if platforms:
+                info["linked_platforms"] = platforms
+    # og:description on Beacons is generic marketing copy — not a real bio.
+    bio = info.get("bio") or ""
+    if re.search(r"(?:mobile website|link in bio|monetization|Beacons is)", bio, re.IGNORECASE):
+        info.pop("bio", None)
+    return info
+
+
+def extract_bio_link(body: str, username: str) -> dict:
+    """Bio.link: og:description is always generic marketing copy — drop it."""
+    info = extract_meta(body, f"https://bio.link/{username}")
+    bio = info.get("bio") or ""
+    if re.search(r"Link to everywhere from your bio link", bio, re.IGNORECASE):
+        info.pop("bio", None)
+    return info
+
+
+# ---------------------------------------------------------------------------
+# Dev.to
+# ---------------------------------------------------------------------------
+
+_DEVTO_LD_RE = re.compile(
+    r'application/ld\+json[^>]*>(.*?)</script>',
+    re.DOTALL | re.IGNORECASE,
+)
+_DEVTO_JOINED_RE = re.compile(
+    r'Joined</[^>]+>[\s\S]{0,300}?<time[^>]+datetime="([^"]+)"',
+    re.IGNORECASE,
+)
+_DEVTO_LOC_RE = re.compile(
+    r'Location</[^>]+>[\s\S]{0,300}?<span[^>]*>\s*([^<\n]{1,60}?)\s*</span>',
+    re.IGNORECASE,
+)
+
+
+def extract_devto(body: str, username: str) -> dict:
+    """Dev.to: JSON-LD Person block carries name, bio, sameAs links, and photo."""
+    info = extract_meta(body, f"https://dev.to/{username}")
+    m = _DEVTO_LD_RE.search(body)
+    if m:
+        try:
+            ld = json.loads(m.group(1))
+        except Exception:
+            ld = {}
+        name = ld.get("name", "")
+        if name:
+            info["display_name"] = name
+        desc = ld.get("description", "")
+        if desc:
+            info["bio"] = unescape(desc)
+        img = ld.get("image", "")
+        if img and isinstance(img, str):
+            info["photo"] = img
+        same_as = ld.get("sameAs", [])
+        if isinstance(same_as, list) and same_as:
+            info["linked_accounts"] = same_as
+    joined = _DEVTO_JOINED_RE.search(body)
+    if joined:
+        info["joined"] = joined.group(1).strip()
+    loc = _DEVTO_LOC_RE.search(body)
+    if loc:
+        text = loc.group(1).strip()
+        if text:
+            info["location"] = unescape(text)
+    return info
+
+
+# ---------------------------------------------------------------------------
+# Medium
+# ---------------------------------------------------------------------------
+
+_MEDIUM_TITLE_RE = re.compile(r'–\s*Medium</title>', re.IGNORECASE)
+
+
+def extract_medium(body: str, username: str) -> dict:
+    """Medium: og:title carries display name; JSON embeds follower counts."""
+    info = extract_meta(body, f"https://medium.com/@{username}")
+    # Strip " – Medium" suffix from display name if extract_meta left it.
+    title = (info.get("display_name") or "").strip()
+    clean = re.sub(r'\s*–\s*Medium\s*$', '', title).strip()
+    if clean:
+        info["display_name"] = clean
+    # Follower / following counts live in the hydration JSON.
+    fc = re.search(r'"followerCount"\s*:\s*(\d+)', body)
+    fw = re.search(r'"followingCount"\s*:\s*(\d+)', body)
+    if fc:
+        info["followers"] = int(fc.group(1))
+    if fw:
+        info["following"] = int(fw.group(1))
+    # Recent article titles (skip very short strings that are UI labels).
+    articles: list[str] = []
+    seen: set[str] = set()
+    for m in re.finditer(r'"title"\s*:\s*"((?:[^"\\]|\\.){10,120})"', body):
+        try:
+            t = json.loads(f'"{m.group(1)}"')
+        except Exception:
+            t = m.group(1)
+        if t and t not in seen and len(t) >= 10:
+            seen.add(t)
+            articles.append(t)
+        if len(articles) >= 5:
+            break
+    if articles:
+        info["recent_articles"] = articles
+    return info
+
+
+# ---------------------------------------------------------------------------
+# About.me
+# ---------------------------------------------------------------------------
+
+_ABOUTME_LD_RE = re.compile(
+    r'application/ld\+json[^>]*>(.*?)</script>',
+    re.DOTALL | re.IGNORECASE,
+)
+
+
+def extract_about_me(body: str, username: str) -> dict:
+    """About.me: JSON-LD Person block has name, bio, jobTitle, address, sameAs."""
+    info: dict = {}
+    m = _ABOUTME_LD_RE.search(body)
+    if not m:
+        return extract_meta(body, f"https://about.me/{username}")
+    try:
+        ld = json.loads(m.group(1))
+    except Exception:
+        return extract_meta(body, f"https://about.me/{username}")
+    name = ld.get("name", "")
+    if name:
+        info["display_name"] = name
+    bio = ld.get("description", "")
+    if bio:
+        info["bio"] = unescape(bio)
+    job = ld.get("jobTitle", "")
+    if job:
+        info["job_title"] = job
+    addr = ld.get("address", "")
+    if addr and isinstance(addr, str):
+        info["location"] = addr
+    # Profile photo — image is a dict with a "url" key.
+    img = ld.get("image", {})
+    if isinstance(img, dict):
+        photo_url = img.get("url", "")
+    else:
+        photo_url = str(img) if img else ""
+    if photo_url:
+        info["photo"] = photo_url
+    # sameAs — verified linked profiles on other platforms.
+    same_as = ld.get("sameAs", [])
+    if isinstance(same_as, list) and same_as:
+        info["linked_accounts"] = same_as
+    return info
+
+
+# ---------------------------------------------------------------------------
+# Keybase
+# ---------------------------------------------------------------------------
+
+def extract_keybase(body: str, username: str) -> dict:
+    """Keybase: the 'body' is a JSON API response, not HTML.
+
+    Extracts profile fields and the cryptographic proofs list — the most
+    valuable output, since each proof is a verified link to another account.
+    """
+    info: dict = {}
+    try:
+        data = json.loads(body)
+    except Exception:
+        return info
+    if data.get("status", {}).get("code") != 0:
+        return info
+    them = data.get("them", {})
+    if not isinstance(them, dict) or not them:
+        return info
+    profile = them.get("profile") or {}
+    if profile.get("full_name"):
+        info["display_name"] = profile["full_name"]
+    if profile.get("bio"):
+        info["bio"] = profile["bio"]
+    if profile.get("location"):
+        info["location"] = profile["location"]
+    pics = them.get("pictures") or {}
+    primary = pics.get("primary") or {}
+    photo_url = primary.get("url", "")
+    if photo_url:
+        info["photo"] = photo_url
+    # Cryptographic proofs — each is a verified link to another account.
+    proofs_raw = (them.get("proofs_summary") or {}).get("all", [])
+    proofs: list[dict] = []
+    for p in proofs_raw:
+        if not isinstance(p, dict) or p.get("state") != 1:
+            continue  # only include verified proofs
+        entry: dict = {"type": p.get("proof_type", ""), "handle": p.get("nametag", "")}
+        url = p.get("service_url", "")
+        if url:
+            entry["url"] = url
+        proofs.append(entry)
+    if proofs:
+        info["proofs"] = proofs
+        info["proof_count"] = len(proofs)
+    return info
+
+
 def extract_pastebin(body: str, username: str) -> dict:
     info = extract_meta(body, f"https://pastebin.com/u/{username}")
     # Pastebin's og:image is a site-wide social card (e.g.
@@ -821,6 +1152,211 @@ def extract_pastebin(body: str, username: str) -> dict:
     return info
 
 
+# ---------------------------------------------------------------------------
+# Vimeo
+# ---------------------------------------------------------------------------
+
+_VIMEO_LD_RE = re.compile(
+    r'application/ld\+json[^>]*>(.*?)</script>',
+    re.DOTALL | re.IGNORECASE,
+)
+
+
+def extract_vimeo(body: str, username: str) -> dict:
+    """Vimeo: JSON-LD Person block carries name, description, follower/video counts.
+
+    og:description is the generic "X is a member of Vimeo" template — drop it
+    and prefer the actual description field from JSON-LD instead.
+    """
+    info = extract_meta(body, f"https://vimeo.com/{username}")
+    # Strip Vimeo's generic profile description — it is never a real bio.
+    if "is a member of Vimeo" in (info.get("bio") or ""):
+        info.pop("bio", None)
+    # Skip the default portrait placeholder.
+    if "defaults-blue" in (info.get("photo") or "") or "defaults-" in (info.get("photo") or ""):
+        info.pop("photo", None)
+
+    m = _VIMEO_LD_RE.search(body)
+    if not m:
+        return info
+    try:
+        blocks = json.loads(m.group(1))
+    except Exception:
+        return info
+    if isinstance(blocks, dict):
+        blocks = [blocks]
+    for block in (blocks if isinstance(blocks, list) else [blocks]):
+        if not isinstance(block, dict):
+            continue
+        entity = block.get("mainEntity")
+        if not isinstance(entity, dict) or entity.get("@type") != "Person":
+            continue
+        if entity.get("name"):
+            info["display_name"] = entity["name"]
+        desc = entity.get("description") or ""
+        if desc.strip():
+            info["bio"] = desc
+        photo = entity.get("image") or ""
+        if (isinstance(photo, str)
+                and photo.startswith("http")
+                and "defaults-" not in photo):
+            info["photo"] = photo
+        # interactionStatistic may be a single dict or a list.
+        stats = entity.get("interactionStatistic") or []
+        if isinstance(stats, dict):
+            stats = [stats]
+        for stat in stats:
+            if not isinstance(stat, dict):
+                continue
+            itype = stat.get("interactionType", "")
+            count = stat.get("userInteractionCount")
+            if count is None:
+                continue
+            if "FollowAction" in itype:
+                info["followers"] = int(count)
+            elif "WriteAction" in itype:
+                info["posts"] = int(count)
+        joined = block.get("dateCreated") or ""
+        if joined:
+            info["joined"] = joined[:10]
+        break
+    return info
+
+
+# ---------------------------------------------------------------------------
+# SoundCloud
+# ---------------------------------------------------------------------------
+
+_SC_USER_RE = re.compile(
+    r'\{"hydratable"\s*:\s*"user"\s*,\s*"data"\s*:\s*(\{)',
+    re.DOTALL,
+)
+
+
+def extract_soundcloud(body: str, username: str) -> dict:
+    """SoundCloud: user data lives in the hydration blob embedded in the page."""
+    info: dict = {}
+    m = _SC_USER_RE.search(body)
+    if not m:
+        return extract_meta(body, f"https://soundcloud.com/{username}")
+    # Walk forward to find the matching closing brace.
+    start = m.start(1)
+    depth, i = 0, start
+    limit = min(start + 30_000, len(body))
+    while i < limit:
+        c = body[i]
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                break
+        i += 1
+    try:
+        data = json.loads(body[start : i + 1])
+    except Exception:
+        return extract_meta(body, f"https://soundcloud.com/{username}")
+
+    if data.get("full_name"):
+        info["display_name"] = data["full_name"]
+    elif data.get("username"):
+        info["display_name"] = data["username"]
+    if data.get("description"):
+        info["bio"] = data["description"]
+    avatar = data.get("avatar_url", "")
+    if avatar:
+        info["photo"] = avatar.replace("-large.", "-t500x500.")
+    if data.get("followers_count") is not None:
+        info["followers"] = int(data["followers_count"])
+    if data.get("followings_count") is not None:
+        info["following"] = int(data["followings_count"])
+    if data.get("track_count") is not None:
+        info["posts"] = int(data["track_count"])
+    city = data.get("city") or ""
+    country = data.get("country_code") or ""
+    if city or country:
+        info["location"] = ", ".join(x for x in [city, country] if x)
+    if data.get("verified"):
+        info["verified"] = bool(data["verified"])
+    if data.get("created_at"):
+        info["joined"] = data["created_at"][:10]
+    return info
+
+
+# ---------------------------------------------------------------------------
+# Bandcamp
+# ---------------------------------------------------------------------------
+
+_BC_GENRE_RE = re.compile(
+    r'"genre"\s*:\s*"https?://bandcamp\.com/discover/([^"]+)"',
+    re.IGNORECASE,
+)
+_BC_LD_RE = re.compile(
+    r'application/ld\+json[^>]*>(.*?)</script>',
+    re.DOTALL | re.IGNORECASE,
+)
+
+
+def extract_bandcamp(body: str, username: str) -> dict:
+    """Bandcamp: artist name from page title; genre from JSON-LD."""
+    info: dict = {}
+    # Artist name is the last segment of the page title: "Album | Artist"
+    title_m = re.search(r'<title[^>]*>([^<]+)</title>', body, re.IGNORECASE)
+    if title_m:
+        parts = title_m.group(1).split(" | ")
+        artist = parts[-1].strip() if len(parts) > 1 else parts[0].strip()
+        if artist:
+            info["display_name"] = unescape(artist)
+    # Genre from the JSON-LD genre URL.
+    gm = _BC_GENRE_RE.search(body)
+    if gm:
+        info["genre"] = gm.group(1).replace("-", " ")
+    # Photo from og:image.
+    og = _meta_map(body)
+    photo = og.get("og:image")
+    if photo:
+        info["photo"] = _abs_url(photo, f"https://{username}.bandcamp.com/")
+    return info
+
+
+# ---------------------------------------------------------------------------
+# Mixcloud  (body is the raw API JSON response, not HTML)
+# ---------------------------------------------------------------------------
+
+def extract_mixcloud(body: str, username: str) -> dict:
+    """Mixcloud: parse the public API JSON response directly."""
+    info: dict = {}
+    try:
+        data = json.loads(body)
+    except Exception:
+        return info
+    if "error" in data:
+        return info
+    name = data.get("name") or data.get("username") or ""
+    if name:
+        info["display_name"] = name
+    bio = data.get("biog") or ""
+    if bio.strip():
+        info["bio"] = bio.strip()
+    pics = data.get("pictures") or {}
+    photo = pics.get("640x640") or pics.get("large") or pics.get("medium") or ""
+    if photo:
+        info["photo"] = photo
+    if data.get("follower_count") is not None:
+        info["followers"] = int(data["follower_count"])
+    if data.get("following_count") is not None:
+        info["following"] = int(data["following_count"])
+    if data.get("cloudcast_count") is not None:
+        info["posts"] = int(data["cloudcast_count"])  # mixes = posts
+    if data.get("listen_count") is not None:
+        info["views"] = int(data["listen_count"])
+    city = data.get("city") or ""
+    country = data.get("country") or ""
+    if city or country:
+        info["location"] = ", ".join(x for x in [city, country] if x)
+    return info
+
+
 _PER_SITE = {
     "Twitter": extract_twitter,
     "TikTok": extract_tiktok,
@@ -834,6 +1370,17 @@ _PER_SITE = {
     "Facebook": extract_facebook,
     "Behance": extract_behance,
     "Pastebin": extract_pastebin,
+    "Linktree": extract_linktree,
+    "Beacons": extract_beacons,
+    "Bio.link": extract_bio_link,
+    "Dev.to": extract_devto,
+    "Medium": extract_medium,
+    "About.me": extract_about_me,
+    "Keybase": extract_keybase,
+    "Vimeo": extract_vimeo,
+    "SoundCloud": extract_soundcloud,
+    "Bandcamp": extract_bandcamp,
+    "Mixcloud": extract_mixcloud,
 }
 
 

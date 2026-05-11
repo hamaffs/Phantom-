@@ -4,10 +4,20 @@
     "category": "dev",
     "url": "https://github.com/{username}",
     "method": "status",
-    "valid_status": [200],
-    "invalid_status": [404],
-    "presence_text": ["<title>{username} (", "<title>{username} ·", "/{username}.png?"],
-    "absence_text": ["<title>Page not found"],
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "presence_text": [
+      "<title>{username} (",
+      "<title>{username} ·",
+      "/{username}.png?"
+    ],
+    "absence_text": [
+      "<title>Page not found"
+    ],
     "reliability": 95
   },
   {
@@ -15,9 +25,15 @@
     "category": "dev",
     "url": "https://gitlab.com/api/v4/users?username={username}",
     "method": "message",
-    "presence_text": ["\"username\":\"{username}\""],
-    "absence_text": ["[]"],
-    "protection": ["tls_fingerprint"],
+    "presence_text": [
+      "\"username\":\"{username}\""
+    ],
+    "absence_text": [
+      "[]"
+    ],
+    "protection": [
+      "tls_fingerprint"
+    ],
     "reliability": 90
   },
   {
@@ -25,8 +41,12 @@
     "category": "dev",
     "url": "https://bitbucket.org/{username}/",
     "method": "status",
-    "valid_status": [200],
-    "invalid_status": [404],
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
     "reliability": 85
   },
   {
@@ -34,9 +54,16 @@
     "category": "dev",
     "url": "https://codepen.io/{username}",
     "method": "message",
-    "presence_text": ["\"username\":\"{username}\"", "/{username}/pens"],
-    "absence_text": ["I'm afraid you've found a page that doesn't exist on CodePen"],
-    "protection": ["tls_fingerprint"],
+    "presence_text": [
+      "\"username\":\"{username}\"",
+      "/{username}/pens"
+    ],
+    "absence_text": [
+      "I'm afraid you've found a page that doesn't exist on CodePen"
+    ],
+    "protection": [
+      "tls_fingerprint"
+    ],
     "reliability": 90
   },
   {
@@ -44,26 +71,45 @@
     "category": "dev",
     "url": "https://replit.com/@{username}",
     "method": "status",
-    "valid_status": [200],
-    "invalid_status": [404],
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
     "reliability": 85
   },
   {
     "name": "Dev.to",
     "category": "dev",
     "url": "https://dev.to/{username}",
-    "method": "status",
-    "valid_status": [200],
-    "invalid_status": [404],
-    "reliability": 95
+    "method": "message",
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "reliability": 95,
+    "presence_text": [
+      "DEV Community Profile"
+    ],
+    "absence_text": [
+      "404: Page Not Found</title>"
+    ]
   },
   {
     "name": "HackerNews",
     "category": "dev",
     "url": "https://news.ycombinator.com/user?id={username}",
     "method": "message",
-    "presence_text": ["created:</td>", "user:&nbsp;<b>{username}</b>"],
-    "absence_text": ["No such user."],
+    "presence_text": [
+      "created:</td>",
+      "user:&nbsp;<b>{username}</b>"
+    ],
+    "absence_text": [
+      "No such user."
+    ],
     "reliability": 95
   },
   {
@@ -71,10 +117,18 @@
     "category": "dev",
     "url": "https://www.codewars.com/api/v1/users/{username}",
     "method": "message",
-    "valid_status": [200],
-    "invalid_status": [404],
-    "presence_text": ["\"username\":\"{username}\""],
-    "absence_text": ["\"reason\":\"not_found\""],
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "presence_text": [
+      "\"username\":\"{username}\""
+    ],
+    "absence_text": [
+      "\"reason\":\"not_found\""
+    ],
     "reliability": 95
   },
   {
@@ -82,8 +136,14 @@
     "category": "dev",
     "url": "https://www.hackerrank.com/profile/{username}",
     "method": "message",
-    "presence_text": ["\"username\":\"{username}\"", "/{username}/_next/data"],
-    "absence_text": ["Programming Problems and Competitions :: HackerRank", "<title>HackerRank</title>"],
+    "presence_text": [
+      "\"username\":\"{username}\"",
+      "/{username}/_next/data"
+    ],
+    "absence_text": [
+      "Programming Problems and Competitions :: HackerRank",
+      "<title>HackerRank</title>"
+    ],
     "reliability": 80
   },
   {
@@ -91,11 +151,22 @@
     "category": "dev",
     "url": "https://leetcode.com/u/{username}/",
     "method": "message",
-    "valid_status": [200],
-    "invalid_status": [404],
-    "presence_text": ["{username}'s Profile", "\"username\":\"{username}\""],
-    "absence_text": ["<title>Page Not Found - LeetCode</title>"],
-    "protection": ["tls_fingerprint"],
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "presence_text": [
+      "{username}'s Profile",
+      "\"username\":\"{username}\""
+    ],
+    "absence_text": [
+      "<title>Page Not Found - LeetCode</title>"
+    ],
+    "protection": [
+      "tls_fingerprint"
+    ],
     "reliability": 90
   },
   {
@@ -103,9 +174,15 @@
     "category": "dev",
     "url": "https://www.kaggle.com/{username}",
     "method": "message",
-    "presence_text": [" | Kaggle</title>"],
-    "absence_text": ["Kaggle: Your Home for Data Science"],
-    "headers": {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0"},
+    "presence_text": [
+      " | Kaggle</title>"
+    ],
+    "absence_text": [
+      "Kaggle: Your Home for Data Science"
+    ],
+    "headers": {
+      "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0"
+    },
     "reliability": 80
   },
   {
@@ -113,8 +190,12 @@
     "category": "dev",
     "url": "https://www.npmjs.com/~{username}",
     "method": "status",
-    "valid_status": [200],
-    "invalid_status": [404],
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
     "reliability": 95
   },
   {
@@ -122,10 +203,19 @@
     "category": "other",
     "url": "https://linktr.ee/{username}",
     "method": "status",
-    "valid_status": [200],
-    "invalid_status": [404],
-    "presence_text": ["{username} | Linktree", "Linktree</title>"],
-    "protection": ["tls_fingerprint"],
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "presence_text": [
+      "{username} | Linktree",
+      "Linktree</title>"
+    ],
+    "protection": [
+      "tls_fingerprint"
+    ],
     "reliability": 90
   },
   {
@@ -133,8 +223,13 @@
     "category": "dev",
     "url": "https://hashnode.com/@{username}",
     "method": "message",
-    "presence_text": ["\"username\":\"{username}\""],
-    "absence_text": ["<title>User not found", "\"user\":null"],
+    "presence_text": [
+      "\"username\":\"{username}\""
+    ],
+    "absence_text": [
+      "<title>User not found",
+      "\"user\":null"
+    ],
     "reliability": 90
   },
   {
@@ -150,8 +245,14 @@
       "<meta property=\"og:url\" content=\"https://x.com/{username}\"",
       "<meta property=\"og:url\" content=\"https://twitter.com/{username}\""
     ],
-    "absence_text": ["This account doesn't exist", "doesn’t exist", "Try searching for another"],
-    "protection": ["tls_fingerprint"],
+    "absence_text": [
+      "This account doesn't exist",
+      "doesn’t exist",
+      "Try searching for another"
+    ],
+    "protection": [
+      "tls_fingerprint"
+    ],
     "reliability": 85
   },
   {
@@ -159,9 +260,17 @@
     "category": "social",
     "url": "https://www.instagram.com/{username}/",
     "method": "message",
-    "presence_text": ["\"username\":\"{username}\"", "@{username}"],
-    "absence_text": ["Sorry, this page isn't available", "Page Not Found"],
-    "protection": ["tls_fingerprint"],
+    "presence_text": [
+      "\"username\":\"{username}\"",
+      "@{username}"
+    ],
+    "absence_text": [
+      "Sorry, this page isn't available",
+      "Page Not Found"
+    ],
+    "protection": [
+      "tls_fingerprint"
+    ],
     "reliability": 70
   },
   {
@@ -169,9 +278,16 @@
     "category": "social",
     "url": "https://www.facebook.com/{username}",
     "method": "message",
-    "presence_text": ["first_name"],
-    "absence_text": ["This page isn't available", "rsrcTags"],
-    "headers": {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36"},
+    "presence_text": [
+      "first_name"
+    ],
+    "absence_text": [
+      "This page isn't available",
+      "rsrcTags"
+    ],
+    "headers": {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36"
+    },
     "reliability": 50
   },
   {
@@ -179,9 +295,16 @@
     "category": "social",
     "url": "https://www.tiktok.com/@{username}",
     "method": "message",
-    "presence_text": ["\"uniqueId\":\"{username}\""],
-    "absence_text": ["\"statusCode\":10221", "\"serverCode\":404"],
-    "protection": ["tls_fingerprint"],
+    "presence_text": [
+      "\"uniqueId\":\"{username}\""
+    ],
+    "absence_text": [
+      "\"statusCode\":10221",
+      "\"serverCode\":404"
+    ],
+    "protection": [
+      "tls_fingerprint"
+    ],
     "reliability": 85
   },
   {
@@ -189,8 +312,12 @@
     "category": "social",
     "url": "https://www.linkedin.com/in/{username}",
     "method": "status",
-    "valid_status": [200],
-    "invalid_status": [404],
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
     "reliability": 50
   },
   {
@@ -198,11 +325,22 @@
     "category": "social",
     "url": "https://old.reddit.com/user/{username}",
     "method": "message",
-    "valid_status": [200],
-    "invalid_status": [404],
-    "presence_text": ["overview for {username}", "<title>overview for {username}"],
-    "absence_text": ["reddit.com: page not found"],
-    "protection": ["tls_fingerprint"],
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "presence_text": [
+      "overview for {username}",
+      "<title>overview for {username}"
+    ],
+    "absence_text": [
+      "reddit.com: page not found"
+    ],
+    "protection": [
+      "tls_fingerprint"
+    ],
     "reliability": 80
   },
   {
@@ -210,8 +348,14 @@
     "category": "social",
     "url": "https://www.pinterest.com/{username}/",
     "method": "message",
-    "presence_text": ["\"username\":\"{username}\"", "\"full_name\":\""],
-    "absence_text": ["User not found.", "@undefined"],
+    "presence_text": [
+      "\"username\":\"{username}\"",
+      "\"full_name\":\""
+    ],
+    "absence_text": [
+      "User not found.",
+      "@undefined"
+    ],
     "reliability": 85
   },
   {
@@ -219,8 +363,12 @@
     "category": "social",
     "url": "https://{username}.tumblr.com/",
     "method": "status",
-    "valid_status": [200],
-    "invalid_status": [404],
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
     "reliability": 90
   },
   {
@@ -228,10 +376,20 @@
     "category": "social",
     "url": "https://www.threads.net/@{username}",
     "method": "message",
-    "presence_text": ["\"username\":\"{username}\"", "@{username}"],
-    "absence_text": ["<title>Threads • Log in</title>", "Sorry, this page isn't available"],
-    "protection": ["tls_fingerprint"],
-    "headers": {"Sec-Fetch-Mode": "navigate"},
+    "presence_text": [
+      "\"username\":\"{username}\"",
+      "@{username}"
+    ],
+    "absence_text": [
+      "<title>Threads • Log in</title>",
+      "Sorry, this page isn't available"
+    ],
+    "protection": [
+      "tls_fingerprint"
+    ],
+    "headers": {
+      "Sec-Fetch-Mode": "navigate"
+    },
     "reliability": 75
   },
   {
@@ -239,10 +397,19 @@
     "category": "social",
     "url": "https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle?handle={username}.bsky.social",
     "method": "message",
-    "presence_text": ["\"did\":\"did:"],
-    "absence_text": ["\"error\":\"InvalidRequest\"", "Unable to resolve handle"],
-    "valid_status": [200],
-    "invalid_status": [400],
+    "presence_text": [
+      "\"did\":\"did:"
+    ],
+    "absence_text": [
+      "\"error\":\"InvalidRequest\"",
+      "Unable to resolve handle"
+    ],
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      400
+    ],
     "reliability": 95
   },
   {
@@ -250,8 +417,12 @@
     "category": "social",
     "url": "https://mastodon.social/@{username}",
     "method": "status",
-    "valid_status": [200],
-    "invalid_status": [404],
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
     "reliability": 90
   },
   {
@@ -259,8 +430,14 @@
     "category": "social",
     "url": "https://vk.com/{username}",
     "method": "message",
-    "presence_text": ["\"first_name\"", "page_name"],
-    "absence_text": ["Page not found", "404 Not Found"],
+    "presence_text": [
+      "\"first_name\"",
+      "page_name"
+    ],
+    "absence_text": [
+      "Page not found",
+      "404 Not Found"
+    ],
     "reliability": 75
   },
   {
@@ -268,8 +445,14 @@
     "category": "gaming",
     "url": "https://steamcommunity.com/id/{username}/",
     "method": "message",
-    "presence_text": ["g_rgProfileData", "<title>Steam Community :: "],
-    "absence_text": ["The specified profile could not be found", "<title>Steam Community :: Error</title>"],
+    "presence_text": [
+      "g_rgProfileData",
+      "<title>Steam Community :: "
+    ],
+    "absence_text": [
+      "The specified profile could not be found",
+      "<title>Steam Community :: Error</title>"
+    ],
     "reliability": 95
   },
   {
@@ -277,14 +460,20 @@
     "category": "gaming",
     "url": "https://twitchtracker.com/{username}",
     "method": "status",
-    "valid_status": [200],
-    "invalid_status": [404],
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
     "presence_text": [
       "{username} - Streamer Overview",
       "Overview of {username} activities",
       "twitchtracker.com/{username}"
     ],
-    "absence_text": ["404 Page Not Found"],
+    "absence_text": [
+      "404 Page Not Found"
+    ],
     "reliability": 85
   },
   {
@@ -292,9 +481,18 @@
     "category": "gaming",
     "url": "https://www.chess.com/member/{username}",
     "method": "message",
-    "presence_text": ["\"player_id\":", "\"@id\":\"https://api.chess.com/pub/player/"],
-    "absence_text": ["error image", "<h1>404 Page not found</h1>", "_404-header"],
-    "headers": {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.114 Safari/537.36"},
+    "presence_text": [
+      "\"player_id\":",
+      "\"@id\":\"https://api.chess.com/pub/player/"
+    ],
+    "absence_text": [
+      "error image",
+      "<h1>404 Page not found</h1>",
+      "_404-header"
+    ],
+    "headers": {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.114 Safari/537.36"
+    },
     "reliability": 90
   },
   {
@@ -302,8 +500,13 @@
     "category": "gaming",
     "url": "https://lichess.org/@/{username}",
     "method": "message",
-    "presence_text": ["data-username=", "og:profile"],
-    "absence_text": ["No such player"],
+    "presence_text": [
+      "data-username=",
+      "og:profile"
+    ],
+    "absence_text": [
+      "No such player"
+    ],
     "reliability": 95
   },
   {
@@ -311,9 +514,16 @@
     "category": "gaming",
     "url": "https://www.speedrun.com/users/{username}",
     "method": "message",
-    "presence_text": ["\"user\":{\"id\":\"", "\"name\":\"{username}\""],
-    "absence_text": ["Not found - Speedrun"],
-    "protection": ["tls_fingerprint"],
+    "presence_text": [
+      "\"user\":{\"id\":\"",
+      "\"name\":\"{username}\""
+    ],
+    "absence_text": [
+      "Not found - Speedrun"
+    ],
+    "protection": [
+      "tls_fingerprint"
+    ],
     "reliability": 85
   },
   {
@@ -321,10 +531,18 @@
     "category": "gaming",
     "url": "https://www.roblox.com/users/profile?username={username}",
     "method": "status",
-    "valid_status": [200],
-    "invalid_status": [404],
-    "presence_text": ["{username} - Roblox"],
-    "protection": ["tls_fingerprint"],
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "presence_text": [
+      "{username} - Roblox"
+    ],
+    "protection": [
+      "tls_fingerprint"
+    ],
     "reliability": 90
   },
   {
@@ -332,10 +550,20 @@
     "category": "gaming",
     "url": "https://api.mojang.com/users/profiles/minecraft/{username}",
     "method": "message",
-    "presence_text": ["\"name\":"],
-    "absence_text": ["Couldn't find any profile with name", "\"errorMessage\""],
-    "valid_status": [200],
-    "invalid_status": [404, 204],
+    "presence_text": [
+      "\"name\":"
+    ],
+    "absence_text": [
+      "Couldn't find any profile with name",
+      "\"errorMessage\""
+    ],
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404,
+      204
+    ],
     "reliability": 95
   },
   {
@@ -343,10 +571,18 @@
     "category": "media",
     "url": "https://vsco.co/{username}/gallery",
     "method": "status",
-    "valid_status": [200],
-    "invalid_status": [404],
-    "presence_text": ["(@{username}) | VSCO"],
-    "protection": ["tls_fingerprint"],
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "presence_text": [
+      "(@{username}) | VSCO"
+    ],
+    "protection": [
+      "tls_fingerprint"
+    ],
     "reliability": 90
   },
   {
@@ -354,18 +590,35 @@
     "category": "media",
     "url": "https://www.youtube.com/@{username}/about",
     "method": "message",
-    "presence_text": ["\"canonicalChannelUrl\":", "\"channelId\":\""],
-    "absence_text": ["404 Not Found", "This page isn't available"],
-    "headers": {"User-Agent": "curl/8.6.0", "Accept": "*/*"},
+    "presence_text": [
+      "\"canonicalChannelUrl\":",
+      "\"channelId\":\""
+    ],
+    "absence_text": [
+      "404 Not Found",
+      "This page isn't available"
+    ],
+    "headers": {
+      "User-Agent": "curl/8.6.0",
+      "Accept": "*/*",
+      "Accept-Language": "en-US,en;q=0.9"
+    },
     "reliability": 90
   },
   {
     "name": "Vimeo",
     "category": "media",
     "url": "https://vimeo.com/{username}",
-    "method": "status",
-    "valid_status": [200],
-    "invalid_status": [404],
+    "method": "message",
+    "presence_text": [
+      "is a member of Vimeo"
+    ],
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
     "reliability": 85
   },
   {
@@ -373,9 +626,17 @@
     "category": "media",
     "url": "https://soundcloud.com/{username}",
     "method": "message",
-    "presence_text": ["\"hydratable\":\"user\"", "soundcloud://users:"],
-    "absence_text": ["SoundCloud - Hear the world", "<title>SoundCloud</title>"],
-    "protection": ["tls_fingerprint"],
+    "presence_text": [
+      "\"hydratable\":\"user\"",
+      "soundcloud://users:"
+    ],
+    "absence_text": [
+      "SoundCloud - Hear the world",
+      "<title>SoundCloud</title>"
+    ],
+    "protection": [
+      "tls_fingerprint"
+    ],
     "reliability": 90
   },
   {
@@ -383,19 +644,38 @@
     "category": "media",
     "url": "https://open.spotify.com/user/{username}",
     "method": "message",
-    "presence_text": ["\"uri\":\"spotify:user:{username}\""],
-    "absence_text": ["<title>Spotify – Web Player</title>", "<title>Spotify - Web Player</title>"],
-    "reliability": 70
+    "presence_text": [
+      "open.spotify.com/user/{username}"
+    ],
+    "absence_text": [
+      "Page not found</title>"
+    ],
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "reliability": 85
   },
   {
     "name": "Last.fm",
     "category": "media",
     "url": "https://www.last.fm/user/{username}",
     "method": "status",
-    "valid_status": [200],
-    "invalid_status": [404],
-    "absence_text": ["Page Not Found | Last.fm", "<title>Last.fm | Page not found"],
-    "protection": ["tls_fingerprint"],
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "absence_text": [
+      "Page Not Found | Last.fm",
+      "<title>Last.fm | Page not found"
+    ],
+    "protection": [
+      "tls_fingerprint"
+    ],
     "reliability": 95
   },
   {
@@ -403,8 +683,13 @@
     "category": "media",
     "url": "https://{username}.bandcamp.com/",
     "method": "message",
-    "presence_text": ["<title>{username}", "bandcamp.com/{username}"],
-    "absence_text": ["<title>Signup | Bandcamp</title>", "new_domain="],
+    "presence_text": [
+      "{username}.bandcamp.com"
+    ],
+    "absence_text": [
+      "<title>Signup | Bandcamp</title>",
+      "new_domain="
+    ],
     "reliability": 85
   },
   {
@@ -412,8 +697,12 @@
     "category": "media",
     "url": "https://www.behance.net/{username}",
     "method": "status",
-    "valid_status": [200],
-    "invalid_status": [404],
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
     "reliability": 85
   },
   {
@@ -421,10 +710,18 @@
     "category": "media",
     "url": "https://dribbble.com/{username}",
     "method": "message",
-    "presence_text": ["<title>{username}", "/{username}/shots"],
-    "absence_text": ["Whoops, that page is gone."],
-    "valid_status": [200],
-    "invalid_status": [404],
+    "presence_text": [
+      "| Dribbble</title>"
+    ],
+    "absence_text": [
+      "Whoops, that page is gone."
+    ],
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
     "reliability": 90
   },
   {
@@ -432,9 +729,15 @@
     "category": "media",
     "url": "https://www.deviantart.com/{username}",
     "method": "status",
-    "valid_status": [200],
-    "invalid_status": [404],
-    "protection": ["tls_fingerprint"],
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "protection": [
+      "tls_fingerprint"
+    ],
     "reliability": 90
   },
   {
@@ -442,8 +745,12 @@
     "category": "media",
     "url": "https://www.flickr.com/people/{username}",
     "method": "status",
-    "valid_status": [200],
-    "invalid_status": [404],
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
     "reliability": 85
   },
   {
@@ -451,20 +758,37 @@
     "category": "media",
     "url": "https://medium.com/@{username}",
     "method": "message",
-    "presence_text": ["\"username\":\"{username}\"", "@{username}"],
-    "absence_text": ["404 - Medium", "<title>404 Not Found</title>", "PAGE NOT FOUND"],
-    "protection": ["tls_fingerprint"],
-    "reliability": 80
+    "presence_text": [
+      "\"username\":\"{username}\"",
+      "– Medium</title>"
+    ],
+    "absence_text": [
+      "PAGE NOT FOUND"
+    ],
+    "protection": [
+      "tls_fingerprint"
+    ],
+    "reliability": 90
   },
   {
     "name": "Substack",
     "category": "media",
     "url": "https://substack.com/@{username}",
     "method": "message",
-    "valid_status": [200],
-    "invalid_status": [404],
-    "presence_text": ["\"slug\":\"{username}\"", "/@{username}/posts"],
-    "absence_text": ["Search &quot;{username}&quot; on Substack", "/search/{username}"],
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "presence_text": [
+      "\"slug\":\"{username}\"",
+      "/@{username}/posts"
+    ],
+    "absence_text": [
+      "Search &quot;{username}&quot; on Substack",
+      "/search/{username}"
+    ],
     "reliability": 80
   },
   {
@@ -472,9 +796,15 @@
     "category": "forum",
     "url": "https://disqus.com/by/{username}/",
     "method": "status",
-    "valid_status": [200],
-    "invalid_status": [404],
-    "presence_text": ["Disqus Profile - {username}"],
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "presence_text": [
+      "Disqus Profile - {username}"
+    ],
     "reliability": 90
   },
   {
@@ -482,9 +812,16 @@
     "category": "forum",
     "url": "https://en.wikipedia.org/w/api.php?action=query&list=users&ususers={username}&format=json",
     "method": "message",
-    "presence_text": ["\"userid\":"],
-    "absence_text": ["\"missing\":\"\"", "\"invalid\":\"\""],
-    "protection": ["tls_fingerprint"],
+    "presence_text": [
+      "\"userid\":"
+    ],
+    "absence_text": [
+      "\"missing\":\"\"",
+      "\"invalid\":\"\""
+    ],
+    "protection": [
+      "tls_fingerprint"
+    ],
     "reliability": 95
   },
   {
@@ -492,9 +829,17 @@
     "category": "forum",
     "url": "https://letterboxd.com/{username}/",
     "method": "message",
-    "presence_text": ["data-person=", "/{username}/films/"],
-    "absence_text": ["Sorry, we can’t find the page you’ve requested.", "Sorry, we can't find the page"],
-    "protection": ["tls_fingerprint"],
+    "presence_text": [
+      "data-person=",
+      "/{username}/films/"
+    ],
+    "absence_text": [
+      "Sorry, we can’t find the page you’ve requested.",
+      "Sorry, we can't find the page"
+    ],
+    "protection": [
+      "tls_fingerprint"
+    ],
     "reliability": 90
   },
   {
@@ -502,8 +847,14 @@
     "category": "forum",
     "url": "https://www.wattpad.com/user/{username}",
     "method": "message",
-    "presence_text": ["@{username}", "/user/{username}/about"],
-    "absence_text": ["userError-404", "User Not Found"],
+    "presence_text": [
+      "@{username}",
+      "/user/{username}/about"
+    ],
+    "absence_text": [
+      "userError-404",
+      "User Not Found"
+    ],
     "reliability": 85
   },
   {
@@ -511,13 +862,24 @@
     "category": "forum",
     "url": "https://graphql.anilist.co",
     "method": "message",
-    "valid_status": [200],
-    "invalid_status": [404],
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
     "request_method": "POST",
     "request_body": "{\"query\":\"{User(name:\\\"{username}\\\"){id name}}\"}",
-    "presence_text": ["\"User\":{\"id\":"],
-    "absence_text": ["\"User\":null"],
-    "headers": {"Content-Type": "application/json", "Accept": "application/json"},
+    "presence_text": [
+      "\"User\":{\"id\":"
+    ],
+    "absence_text": [
+      "\"User\":null"
+    ],
+    "headers": {
+      "Content-Type": "application/json",
+      "Accept": "application/json"
+    },
     "reliability": 95
   },
   {
@@ -525,10 +887,20 @@
     "category": "forum",
     "url": "https://pastebin.com/u/{username}",
     "method": "message",
-    "presence_text": ["'s Pastebin", "user-info"],
-    "absence_text": ["Unknown User", "<title>Pastebin.com - #1 paste tool since 2002!</title>"],
-    "valid_status": [200],
-    "invalid_status": [404],
+    "presence_text": [
+      "'s Pastebin",
+      "user-info"
+    ],
+    "absence_text": [
+      "Unknown User",
+      "<title>Pastebin.com - #1 paste tool since 2002!</title>"
+    ],
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
     "reliability": 90
   },
   {
@@ -536,9 +908,15 @@
     "category": "forum",
     "url": "https://api.imgur.com/account/v1/accounts/{username}?client_id=546c25a59c58ad7",
     "method": "status",
-    "valid_status": [200],
-    "invalid_status": [404],
-    "presence_text": ["\"username\":\"{username}\""],
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "presence_text": [
+      "\"username\":\"{username}\""
+    ],
     "reliability": 90
   },
   {
@@ -546,10 +924,19 @@
     "category": "other",
     "url": "https://www.patreon.com/{username}",
     "method": "status",
-    "valid_status": [200],
-    "invalid_status": [404],
-    "absence_text": ["Not found | Patreon", "<title>Not found"],
-    "protection": ["tls_fingerprint"],
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "absence_text": [
+      "Not found | Patreon",
+      "<title>Not found"
+    ],
+    "protection": [
+      "tls_fingerprint"
+    ],
     "reliability": 90
   },
   {
@@ -557,11 +944,24 @@
     "category": "other",
     "url": "https://ko-fi.com/{username}",
     "method": "message",
-    "valid_status": [200],
-    "invalid_status": [404],
-    "presence_text": ["pageOwnerId", "Buy {username} a Coffee", "kofi-button"],
-    "absence_text": ["Ko-fi | Make money doing what you love", "Ko-fi - Where creators get support"],
-    "protection": ["tls_fingerprint"],
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "presence_text": [
+      "pageOwnerId",
+      "Buy {username} a Coffee",
+      "kofi-button"
+    ],
+    "absence_text": [
+      "Ko-fi | Make money doing what you love",
+      "Ko-fi - Where creators get support"
+    ],
+    "protection": [
+      "tls_fingerprint"
+    ],
     "reliability": 60
   },
   {
@@ -569,10 +969,20 @@
     "category": "other",
     "url": "https://www.buymeacoffee.com/{username}",
     "method": "message",
-    "presence_text": ["buymeacoffee.com/{username}", "\"creator\":"],
-    "absence_text": ["<title>Page not found", "404"],
-    "valid_status": [200],
-    "invalid_status": [404],
+    "presence_text": [
+      "buymeacoffee.com/{username}",
+      "\"creator\":"
+    ],
+    "absence_text": [
+      "<title>Page not found",
+      "404"
+    ],
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
     "reliability": 85
   },
   {
@@ -580,17 +990,29 @@
     "category": "other",
     "url": "https://about.me/{username}",
     "method": "status",
-    "valid_status": [200],
-    "invalid_status": [404],
-    "reliability": 85
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "reliability": 90,
+    "presence_text": [
+      " on about.me</title>"
+    ]
   },
   {
     "name": "Keybase",
-    "category": "other",
-    "url": "https://keybase.io/_/api/1.0/user/lookup.json?username={username}",
+    "category": "dev",
+    "url": "https://keybase.io/_/api/1.0/user/lookup.json?username={username}&fields=basics,profile,proofs_summary,pictures",
     "method": "message",
-    "presence_text": ["\"status\":{\"code\":0"],
-    "absence_text": ["\"status\":{\"code\":901", "\"name\":\"NOT_FOUND\""],
+    "presence_text": [
+      "\"status\":{\"code\":0"
+    ],
+    "absence_text": [
+      "\"name\":\"NOT_FOUND\"",
+      "\"name\":\"INPUT_ERROR\""
+    ],
     "reliability": 95
   },
   {
@@ -598,8 +1020,13 @@
     "category": "social",
     "url": "https://t.me/{username}",
     "method": "message",
-    "presence_text": ["Telegram: View @{username}", "tgme_page_title"],
-    "absence_text": ["Telegram: Contact @{username}"],
+    "presence_text": [
+      "Telegram: View @{username}",
+      "tgme_page_title"
+    ],
+    "absence_text": [
+      "Telegram: Contact @{username}"
+    ],
     "reliability": 80
   },
   {
@@ -607,10 +1034,74 @@
     "category": "other",
     "url": "https://gravatar.com/{username}.json",
     "method": "message",
-    "presence_text": ["\"hash\":", "\"requestHash\":\"{username}\""],
-    "absence_text": ["User not found"],
-    "valid_status": [200],
-    "invalid_status": [404],
+    "presence_text": [
+      "\"hash\":",
+      "\"requestHash\":\"{username}\""
+    ],
+    "absence_text": [
+      "User not found"
+    ],
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
     "reliability": 95
+  },
+  {
+    "name": "Beacons",
+    "category": "other",
+    "url": "https://beacons.ai/{username}",
+    "method": "message",
+    "presence_text": [
+      " | Beacons</title>"
+    ],
+    "absence_text": [
+      "Mobile Websites for Creators"
+    ],
+    "protection": [
+      "tls_fingerprint"
+    ],
+    "reliability": 90
+  },
+  {
+    "name": "Bio.link",
+    "category": "other",
+    "url": "https://bio.link/{username}",
+    "method": "status",
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "reliability": 85
+  },
+  {
+    "name": "Carrd",
+    "category": "other",
+    "url": "https://{username}.carrd.co",
+    "method": "status",
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "reliability": 90
+  },
+  {
+    "name": "Mixcloud",
+    "category": "media",
+    "url": "https://api.mixcloud.com/{username}/",
+    "method": "status",
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "reliability": 85
   }
 ]

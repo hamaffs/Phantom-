@@ -1,12 +1,12 @@
 # Phantom
 
-Async OSINT username checker. Given a username, Phantom queries 60 curated sites in parallel and reports where that handle exists.
+Async OSINT username checker. Given a username, Phantom queries 64 curated sites in parallel and reports where that handle exists.
 
 Designed for **accuracy first**: a `[ FOUND ]` requires positive evidence (a presence marker in the response body or a clean status code), and any "page exists / user not found" page is correctly classified as MISSING. Bot walls and ambiguous responses become `[   ?   ]` rather than risk a false positive.
 
-- 60 hand-picked sites across dev, social, media, gaming, forum, and other
+- 64 hand-picked sites across dev, social, media, gaming, forum, and other
 - **Variant engine**: one input expands to dozens of plausible handles (separators, number/prefix/suffix variants, smart word splits, blind position-insertion for short tokens, first/last name permutations). Use `--exact` to disable.
-- **Compact terminal output**: one `[ FOUND ]` section, one `[ ? ]` section, `[MISSING]` shown as a count.
+- **Confidence-ranked output**: every FOUND result is scored 0–100 and grouped into three tiers — `[ VERIFIED IDENTITY ]`, `[ LIKELY MATCH ]`, and `[ POSSIBLE IMPOSTOR ]`. Impostors are collapsed by default; use `--show-all` to surface them. The terminal and all export formats include the score on every row.
 - **Exportable reports**: `--export FILE` writes the results to **HTML** (premium intelligence-dashboard layout — Inter + JetBrains Mono, glass surfaces, soft-purple accent, one card per discovered profile), **JSON**, or **Markdown** — format inferred from the file extension.
 - **Public profile enrichment**: every FOUND site is scanned for the public profile data the SSR'd page already exposes — display name, bio, photo, follower / following / post counts, location, joined date, verified / private flags, bio language, website, plus per-platform extras (Twitter lists, TikTok hearts, GitHub pinned repos, YouTube total views, Reddit karma split, …). No auth, no extra HTTP calls.
 - **Reliability built-in**: every `(variant × site)` check runs through a shared task pool (so stragglers don't block subsequent variants), transient failures (timeouts, 5xx, transport errors) get one retry, and stable answers are cached on disk for an hour so re-runs are near-instant.
@@ -36,7 +36,7 @@ phantom <username> --found-only
 
 ```
 $ phantom <username>
-Phantom: trying 33 variants of '<username>' across 60 sites = 1980 requests
+Phantom: trying 33 variants of '<username>' across 64 sites = 2079 requests
 
 [ FOUND ] 9
   GitHub         https://github.com/<username> (http=200)  [<username>]
@@ -67,7 +67,7 @@ phantom/
 ├── enrich.py           # public profile data extractor (display name, bio, photo, stats…)
 ├── identity.py         # cross-platform identity correlation (perceptual photo hashing + name/bio overlap)
 ├── watch.py            # snapshot + diff for --watch mode
-├── sites.json          # 60 site definitions (data, no code)
+├── sites.json          # 64 site definitions (data, no code)
 ├── requirements.txt    # aiohttp, aiodns, brotli, curl_cffi, Pillow, imagehash, opencv-python, playwright
 └── README.md
 ```
@@ -177,7 +177,21 @@ phantom <username> --no-impersonate
 | **Steam** | ✓ | ✓ | — | — | profile level, country flag, game count |
 | **Lichess** | ✓ | ✓ | ✓ | total games played → `posts` | best rating across blitz/rapid/classical, per-perf rating map |
 | **Threads** | ✓ | ✓ (cleaned of `… • Threads, Say more` decoration) | ✓ | followers / posts (parsed from og:description) | — |
-| **Pastebin / Twitch / Letterboxd / Mastodon / Linktree / …** | ✓ | ✓ | ✓ | — | (whatever's in `og:*`) |
+| **Linktree** | ✓ (avatar, when set) | ✓ | ✓ | — | **links list** (title + URL for every link on the profile), social icons, link count |
+| **Beacons** | ✓ | ✓ | — | — | **linked_platforms** (list of connected platforms parsed from the page title) |
+| **Bio.link** | ✓ | ✓ | — | — | (OpenGraph; generic bio description stripped) |
+| **Carrd** | ✓ | ✓ | ✓ | — | (OpenGraph) |
+| **Dev.to** | ✓ | ✓ | ✓ | — | **linked_accounts** (sameAs from JSON-LD: Twitter, GitHub, website), joined date, location |
+| **Medium** | ✓ | ✓ | ✓ | followers / following | **recent_articles** (up to 5 article titles from page JSON) |
+| **About.me** | ✓ | ✓ | ✓ (bio + jobTitle) | — | **linked_accounts** (sameAs from JSON-LD), job title, address |
+| **Keybase** | ✓ | ✓ | ✓ | — | **proofs** (cryptographic identity proofs — verified Twitter, GitHub, Reddit, HN, DNS/websites), proof_count |
+| **Vimeo** | ✓ | ✓ | ✓ | followers / posts (video count) | joined date |
+| **SoundCloud** | ✓ | ✓ | ✓ | followers / following / track count | location, verified flag |
+| **Bandcamp** | ✓ (artist name) | — | — | — | genre (from JSON-LD) |
+| **Mixcloud** | ✓ | ✓ | ✓ (mixes = posts) | followers / following / views | city, country |
+| **Spotify** | ✓ | — | — | — | (OpenGraph; user URI confirmed via og:url) |
+| **Dribbble** | ✓ | — | — | — | (OpenGraph title only) |
+| **Pastebin / Twitch / Letterboxd / Mastodon / …** | ✓ | ✓ | ✓ | — | (whatever's in `og:*`) |
 
 Twitter/TikTok use a per-site extractor because they ship no `og:*` tags and embed all profile data in JSON instead. Instagram serves `og:description` of the form *"49 Followers, 176 Following, 1 Posts — …"* which is parsed for counts. GitHub has a fully-SSR'd profile so we read repo names, follower counts, company, location, and blog directly from the HTML. Everything else falls through to a generic OpenGraph reader.
 
@@ -203,16 +217,56 @@ Every extracted bio also runs through a **language detector** (script-based for 
 | `--watch` | off | Snapshot the FOUND set and diff against the previous run for the same input. Snapshots live in `~/.cache/phantom/snapshots/`. |
 | `--quiet` | off | Suppress the regular scan output. With `--watch`, only the diff is printed (or nothing if there are no changes). Designed for cron. |
 | `--found-only` | off | Print only hits (suppress the `[ ? ]` section). |
+| `--show-all` | off | Include the `[ POSSIBLE IMPOSTOR ]` tier in terminal output (default: show count only). |
 | `--json` | off | Emit JSON to stdout (single object: `input`, `summary`, `found`, `variants`). |
 | `--export FILE` | off | Write a structured report. Format inferred from extension (`.html` / `.json` / `.md` / `.pdf`). |
 | `--dark` | off | Use dark theme for HTML/PDF exports. Mutually exclusive with `--light`. |
 | `--light` | off | Use light theme for HTML/PDF exports (default — same as omitting both flags). |
 | `--no-color` | off | Disable ANSI colors (auto-disabled when stdout is not a TTY). |
 
+## Confidence ranking
+
+After the scan, every FOUND account receives a confidence score (0–100) computed from cross-platform signals in `confidence.py`. Results are grouped into three tiers:
+
+| Tier | Score | Terminal label | Meaning |
+| --- | --- | --- | --- |
+| **Verified identity** | 55+ | `[ VERIFIED IDENTITY ]` | High confidence this is the real person — verified badge, photo cluster, or strong cross-platform consistency |
+| **Likely match** | 20–54 | `[ LIKELY MATCH ]` | Probably the same person but lacking the strongest signals |
+| **Possible impostor** | 0–19 | `[ POSSIBLE IMPOSTOR ]` | Low confidence — likely a squatter, fan account, or unrelated person with the same handle |
+
+Possible impostors are **collapsed by default** in the terminal. Use `--show-all` to print them. All three tiers appear in every export format (HTML collapsible section, JSON fields, Markdown section headers).
+
+### Scoring signals
+
+| Signal | Points |
+| --- | --- |
+| Verified badge on the platform | +50 |
+| Profile photo perceptually matches another FOUND account (photo cluster) | +30 |
+| Bio or linked website references another confirmed account's domain | +25 |
+| Follower count within two orders of magnitude of the median across FOUND | +20 |
+| **Exact username match** (no separators, no affixes, no numbers) | +20 |
+| Display name matches the inferred subject name (fuzzy, case-insensitive) | +15 |
+| Account shows activity (posts > 0, or joined > 6 months ago) | +10 |
+| Zero posts AND zero followers (parked / placeholder account) | −25 |
+| Default or placeholder profile photo | −20 |
+| Has a real photo that doesn't match any photo cluster (isolated photo) | −15 |
+| Variant has an impostor affix (`real`, `official`, `the`, …) AND the plain variant was also found on the same platform | −15 |
+| Fewer than 10 followers while the subject has > 100k elsewhere | −10 |
+
+Scores are clamped to [0, 100].
+
+### Calibration notes
+
+For **unique usernames** (hamaffs, jozzzof, etc.) with no impostors: every account matching the exact handle gets +20 from the exact-username signal. Combined with display-name match (+15) and activity (+10), genuine accounts naturally land in `likely_match` (35–45) or `verified_identity` when cross-platform photo or follower signals fire too.
+
+For **famous usernames** (pewdiepie, zuck, etc.) with hundreds of variants: the real account gets boosted by verified badge (+50), exact-handle match (+20), and photo cluster (+30 when photos are fetched), reaching `verified_identity`. Impostors using modified variants (pewdiepie99, realpewdiepie) get 0 from the exact-handle signal and typically land below 20 → `possible_impostor`.
+
 ## Output legend
 
 ```
-[ FOUND ]   profile exists — verified by status code or body content
+[ VERIFIED IDENTITY ]   score ≥ 55 — high confidence real account
+[ LIKELY MATCH ]        score 20–54 — probably real, some uncertainty
+[ POSSIBLE IMPOSTOR ]   score 0–19 — likely squatter (use --show-all to display)
 [MISSING]   site cleanly says the user does not exist (4xx, or absence pattern matched)
 [   ?   ]   inconclusive — bot-wall, captcha, 5xx, timeout, or auth wall
 ```
@@ -451,9 +505,9 @@ Sites that were always returning `[   ?   ]` from datacenter IPs (Quora, itch.io
 
 | Score | Examples | What it means |
 | --- | --- | --- |
-| 90–95 | GitHub, AniList API, Codewars API, Bluesky, Lichess, Last.fm, npm, Mojang, Hashnode, Patreon, YouTube, Roblox, VSCO, Disqus, Imgur API, Linktree | Clean status code or strict presence/absence — trust. |
-| 80–89 | Pastebin, Steam, Pinterest, Twitch (mobile), Bandcamp, Kaggle, HackerRank, Medium, TikTok, Reddit (old.reddit.com), Telegram | Generally clean but occasionally flaky. |
-| 70–79 | Threads, Spotify, VK | Heavy SPA / WAF; correct most of the time. |
+| 90–95 | GitHub, AniList API, Codewars API, Bluesky, Lichess, Last.fm, npm, Mojang, Hashnode, Patreon, YouTube, Roblox, VSCO, Disqus, Imgur API, Linktree, Beacons, Carrd, Dev.to, Keybase, Medium, About.me, Dribbble | Clean status code or strict presence/absence — trust. |
+| 80–89 | Pastebin, Steam, Pinterest, Twitch (mobile), Bandcamp, Kaggle, HackerRank, TikTok, Reddit (old.reddit.com), Telegram, Bio.link, Vimeo, SoundCloud, Mixcloud, Spotify | Generally clean but occasionally flaky. |
+| 70–79 | Threads, VK | Heavy SPA / WAF; correct most of the time. |
 | 50–69 | LinkedIn, Facebook, Ko-fi | Bot walls or SPAs we can't reliably penetrate. Filter out with `--min-reliability 70` if you want only confident hits. |
 
 ## Adding a new site
