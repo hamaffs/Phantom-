@@ -24,6 +24,7 @@
     "name": "GitLab",
     "category": "dev",
     "url": "https://gitlab.com/api/v4/users?username={username}",
+    "profile_url": "https://gitlab.com/{username}",
     "method": "message",
     "presence_text": [
       "\"username\":\"{username}\""
@@ -116,6 +117,7 @@
     "name": "Codewars",
     "category": "dev",
     "url": "https://www.codewars.com/api/v1/users/{username}",
+    "profile_url": "https://www.codewars.com/users/{username}",
     "method": "message",
     "valid_status": [
       200
@@ -259,6 +261,7 @@
     "name": "Instagram",
     "category": "social",
     "url": "https://i.instagram.com/api/v1/users/web_profile_info/?username={username}",
+    "profile_url": "https://www.instagram.com/{username}/",
     "method": "message",
     "presence_text": [
       "\"username\":\"{username}\""
@@ -403,6 +406,7 @@
     "name": "Bluesky",
     "category": "social",
     "url": "https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle?handle={username}.bsky.social",
+    "profile_url": "https://bsky.app/profile/{username}.bsky.social",
     "method": "message",
     "presence_text": [
       "\"did\":\"did:"

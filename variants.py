@@ -24,6 +24,24 @@ PREFIXES = ("the", "its", "real", "official")
 SUFFIXES = ("_", "official", "_official")
 SEPARATORS = ("", ".", "_", "-")
 
+# Leetspeak substitutions. Only the safest mappings: characters that are
+# universally recognised as visual substitutes for letters. Each substitution
+# is applied to *every* occurrence (so "jose" → "j0se" not "j0se" and "jos3"
+# variants — that combinatorial expansion produces too much noise for the
+# extra coverage). Most common substitution forms first.
+_LEET_MAP = {
+    "o": "0",
+    "i": "1",
+    "e": "3",
+    "a": "4",
+    "s": "5",
+    "t": "7",
+}
+# Cap on how many leet variants we add per input. Even with the bounded
+# substitution above, applying all six to a long input creates a lot of
+# rarely-used forms — most leetspeak handles use one or two substitutions.
+_LEET_MAX_VARIANTS = 8
+
 _EXISTING_SEP_RE = re.compile(r"[._\-]")
 _CAMEL_SPLIT_RE = re.compile(r"(?<=[a-z])(?=[A-Z])")
 _DIGIT_BOUNDARY_RE = re.compile(r"(?<=[A-Za-z])(?=\d)|(?<=\d)(?=[A-Za-z])")
@@ -75,6 +93,27 @@ def _valid(s: str) -> bool:
     return bool(USERNAME_PATTERN.match(s))
 
 
+def _leet_variants(token: str) -> list[str]:
+    """Single-substitution leetspeak forms.
+
+    Each output is the input with exactly one letter→digit substitution
+    applied to all occurrences of that letter. Skips substitutions that
+    produce a string identical to the input (no eligible letter). Capped
+    at `_LEET_MAX_VARIANTS` total to keep the run sensible.
+    """
+    base = token.lower()
+    out: list[str] = []
+    for letter, digit in _LEET_MAP.items():
+        if letter not in base:
+            continue
+        candidate = base.replace(letter, digit)
+        if candidate != base:
+            out.append(candidate)
+        if len(out) >= _LEET_MAX_VARIANTS:
+            break
+    return out
+
+
 def _blind_position_splits(token: str) -> list[str]:
     """For tokens with no obvious word boundary (no separator, no camelCase,
     no digit run), try inserting each separator at each internal position.
@@ -112,6 +151,7 @@ def _variants_single(token: str) -> list[str]:
             out.append(sep.join(parts))
 
     out.extend(_blind_position_splits(token))
+    out.extend(_leet_variants(base))
 
     for n in NUMBER_SUFFIXES:
         out.append(f"{base}{n}")
@@ -156,16 +196,41 @@ def _variants_name(first: str, last: str) -> list[str]:
     return [v for v in candidates if len(v) >= _NAME_MIN_LEN]
 
 
+_EMAIL_RE = re.compile(r"^([A-Za-z0-9._\-+]+)@([A-Za-z0-9.\-]+\.[A-Za-z]{2,})$")
+
+
+def _strip_email(raw: str) -> str:
+    """If raw looks like a complete email, return the local-part (before @).
+
+    Strips any `+tag` suffix common in plus-addressing — `alice+gh@x.com`
+    becomes `alice`, which is the handle the user almost certainly carries
+    on platforms.
+    """
+    m = _EMAIL_RE.match(raw)
+    if not m:
+        return raw
+    local = m.group(1)
+    plus = local.find("+")
+    if plus > 0:
+        local = local[:plus]
+    return local
+
+
 def generate(raw: str) -> list[str]:
     """Return a deduplicated, validated list of variants for `raw`.
 
     Whitespace in `raw` switches to first/last-name mode. Tokens beyond the
     second are ignored (parts[0] + parts[-1]) so middle names don't explode
     the variant set.
+
+    Email inputs (`foo@bar.com`) collapse to the local-part before variant
+    generation — that's the handle the user is statistically most likely
+    to reuse on social platforms.
     """
     raw = raw.strip()
     if not raw:
         return []
+    raw = _strip_email(raw)
     parts = raw.split()
     if len(parts) >= 2:
         candidates = _variants_name(parts[0], parts[-1])

@@ -998,7 +998,7 @@ async def build_identities(found: list[dict]) -> list[IdentityCluster]:
 async def build_overall_and_clusters(
     found: list[dict],
     deep_options: Optional[Any] = None,
-) -> tuple[Optional[IdentityCluster], list[IdentityCluster], Any, dict[str, bool]]:
+) -> tuple[Optional[IdentityCluster], list[IdentityCluster], Any, dict[str, bool], dict[str, bytes]]:
     """Run both: an overall aggregate AND per-photo clusters.
 
     Returns (overall, clusters, deep_evidence, face_map). `deep_evidence`
@@ -1012,9 +1012,15 @@ async def build_overall_and_clusters(
     different angles).
     """
     if not found:
-        return None, [], None, {}
+        return None, [], None, {}, {}
     photo_urls = [(r.get("profile") or {}).get("photo") for r in found]
     photo_bytes, phashes = await fetch_photo_data(photo_urls)
+
+    photo_bytes_map: dict[str, bytes] = {
+        url: data
+        for url, data in zip(photo_urls, photo_bytes)
+        if url and data
+    }
 
     # Detect faces once per URL; cached so any caller (e.g.
     # _pick_subject_photo) can call has_human_face(url) cheaply later.
@@ -1054,4 +1060,4 @@ async def build_overall_and_clusters(
     else:
         clusters = phash_clusters
 
-    return overall, clusters, deep_evidence, face_map
+    return overall, clusters, deep_evidence, face_map, photo_bytes_map
