@@ -1,13 +1,57 @@
 # Phantom
 
-Async OSINT username checker. Given a username, Phantom queries 63 curated sites in parallel and reports where that handle exists.
+Async OSINT username checker. Given a username, Phantom queries ~99 curated sites in parallel and reports where that handle exists — *and who that handle belongs to*.
 
-Designed for **accuracy first**: a `[ FOUND ]` requires positive evidence (a presence marker in the response body or a clean status code), and any "page exists / user not found" page is correctly classified as MISSING. Bot walls and ambiguous responses become `[   ?   ]` rather than risk a false positive.
+> **Position: Maigret tells you *where*; Phantom tells you *who*.**
+> Phantom isn't trying to win on raw site count. It's an accuracy-first investigation tool with confidence scoring, identity disambiguation, deep public-data enrichment, an interactive Maltego-style dossier graph, and an explicit "why this score" trace on every result.
 
-- 63 hand-picked sites across dev, social, media, gaming, forum, and other
-- **Variant engine**: one input expands to dozens of plausible handles (separators, number/prefix/suffix variants, smart word splits, blind position-insertion for short tokens, first/last name permutations). Use `--exact` to disable.
-- **Confidence-ranked output**: every FOUND result is scored 0–100 and grouped into three tiers — `[ VERIFIED IDENTITY ]`, `[ LIKELY MATCH ]`, and `[ POSSIBLE IMPOSTOR ]`. Impostors are collapsed by default; use `--show-all` to surface them. The terminal and all export formats include the score on every row.
-- **Exportable reports**: `--export FILE` writes the results to **HTML** (premium intelligence-dashboard layout — Inter + JetBrains Mono, glass surfaces, soft-purple accent, one card per discovered profile), **JSON**, or **Markdown** — format inferred from the file extension.
+## Designed for accuracy first
+
+A `[ FOUND ]` requires positive evidence (a presence marker in the response body or a clean status code), and any "page exists / user not found" page is correctly classified as MISSING. Bot walls and ambiguous responses become `[   ?   ]` rather than risk a false positive.
+
+Zero-false-positives is a hard constraint, audited via:
+
+- Two-sided detection rule: `presence_text` must match AND `absence_text` must NOT match
+- URL-echo guard in `discover_site.py` (suggested patterns get tested against a fake handle before being accepted)
+- Per-site `validate_sites.py` schema check
+- `--self-check` canary system (probes 27+ curated handles weekly to catch site drift)
+
+## At a glance
+
+| Feature | Maigret | Phantom |
+|---|---|---|
+| Site count | 3000+ (top 500 default) | ~99 (every one detection-audited) |
+| False-positive rate | permissive | zero by construction |
+| Confidence scoring per result | — | 0–100 + tier + evidence trace |
+| Identity disambiguation (cluster real-person vs squatters) | — | weighted graph + photo-hash + stylometry |
+| Recursive cross-link discovery | iterative | iterative + source-weighted boost (Keybase +30, GitHub +20, …) |
+| `--parse URL` (give a profile URL, scan its derived handle) | — | yes |
+| Anti-block backends | curl_cffi via FlareSolverr | aiohttp + curl_cffi + Playwright (in-process) |
+| HTML report | functional | editorial dossier (Instrument Serif + IBM Plex) with: |
+| · Interactive force-directed graph | external D3 | inline, pan/zoom/drag, two-island confirmed/unrelated layout |
+| · Profile photos as graph nodes | — | yes (with PIL-variance default-PFP suppression) |
+| · Per-account "Why this score" trace | — | every signal that fired with its weight |
+| · Linked-account chips per card | — | yes |
+| · "Confirmed missing on …" chip list | — | yes |
+| · Real-name / Nickname detector | — | classifies display_name strings + bio first-line |
+| Export formats | HTML, PDF, XMind, JSON, CSV, TXT, D3 | HTML, PDF, JSON, Markdown, CSV, **Mermaid mindmap** |
+| Wayback Machine historical lookup | — | `--wayback` |
+| GitHub deep-dive (orgs, starred, commit-email leak) | — | `--github-deep` |
+| Profile-photo OCR | — | `--photo-ocr` (Tesseract, optional) |
+| Stylometric bio fingerprint (impostor detection) | — | always-on |
+| MISSING tier (confirmed vs uncertain) | — | yes |
+| Site auto-discovery tool | — | `discover_site.py` (probes a URL pattern, proposes a sites.json entry) |
+| Canary-handle self-check + auto-disable suggestion | — | `--self-check` |
+| Embeddable Python library | yes | `pip install phantom-osint` → `from phantom import Phantom` |
+| AI summarizer | yes (OpenAI) | deliberately omitted — no APIs needed |
+
+## What Phantom extracts
+
+- ~99 hand-picked sites across dev, social, media, gaming, forum, and other (every site detection-audited; zero false positives in the latest audit)
+- **Variant engine**: one input expands to dozens of plausible handles (separators, number/prefix/suffix variants, smart word splits, blind position-insertion for short tokens, first/last name permutations, leetspeak substitutions, email-to-handle). Use `--exact` to disable.
+- **Confidence-ranked output**: every FOUND result is scored 0–100 with full **evidence trace** (`+50 verified badge`, `+30 photo matches another account`, `−15 photo doesn't match any cluster`, …) and grouped into three tiers — `[ VERIFIED IDENTITY ]`, `[ LIKELY MATCH ]`, and `[ POSSIBLE IMPOSTOR ]`. Impostors are collapsed by default; use `--show-all` to surface them.
+- **Identity disambiguation**: weighted similarity graph clusters FOUND accounts by photo hash, cross-links in bios, fuzzy display name, follower-tier, location, stylometric bio fingerprint (cosine similarity of punctuation / capitalization / emoji habits), and source-weighted handle confidence (Keybase proof +30, GitHub `x_handle` +20, JSON-LD sameAs +15, website +10, Linktree +5).
+- **Exportable reports**: `--export FILE` writes to **HTML** (the editorial dossier with the interactive graph), **PDF**, **JSON**, **Markdown**, **CSV**, or **Mermaid mindmap** (`.mmd` — opens in GitHub / Obsidian / VS Code).
 - **Public profile enrichment**: every FOUND site is scanned for the public profile data the SSR'd page already exposes — display name, bio, photo, follower / following / post counts, location, joined date, verified / private flags, bio language, website, plus per-platform extras (Twitter lists, TikTok hearts, GitHub pinned repos, YouTube total views, Reddit karma split, …). No auth, no extra HTTP calls.
 - **Reliability built-in**: every `(variant × site)` check runs through a shared task pool (so stragglers don't block subsequent variants), transient failures (timeouts, 5xx, transport errors) get one retry, and stable answers are cached on disk for an hour so re-runs are near-instant.
 - **Identity aggregation**: every FOUND account contributes to one "Overall identity" summary — display name, all photos, vote-counted locations, geo-region inference, total followers across platforms, oldest joined date, verified-on-N-of-M. Photo correlation (perceptually-hashed profile pictures matching across sites) runs on top as a separate "Photo-matched accounts" view. Disable with `--no-identity`.
@@ -24,13 +68,38 @@ Designed for **accuracy first**: a `[ FOUND ]` requires positive evidence (a pre
 
 ## Quick start
 
+Three install routes — pick one.
+
+**A) pip install (preferred):**
+
+```bash
+pip install phantom-osint                    # if/when published to PyPI
+playwright install chromium                  # one-time; needed for --js-render / PDF
+phantom <username> --found-only
+```
+
+**B) Docker (for proxy/Tor isolation):**
+
+```bash
+docker build -t phantom .
+docker run --rm phantom <username>
+# With persistent cache:
+docker run -v $PWD/.phantom-cache:/home/phantom/.cache/phantom \
+           --rm phantom <username>
+```
+
+**C) Git clone (development):**
+
 ```bash
 git clone git@github.com:hamaffs/Phantom-.git phantom
 cd phantom
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/playwright install chromium
 sudo ln -s "$PWD/phantom" /usr/local/bin/phantom
 phantom <username> --found-only
 ```
+
+Optional: `apt install tesseract-ocr && pip install pytesseract` enables `--photo-ocr`.
 
 ## Example output
 
@@ -61,15 +130,37 @@ Phantom: trying 33 variants of '<username>' across 63 sites = 2079 requests
 
 ```
 phantom/
-├── phantom             # bash wrapper (the CLI entry point)
-├── checker.py          # async checker (called by the wrapper)
-├── variants.py         # username variation engine
-├── enrich.py           # public profile data extractor (display name, bio, photo, stats…)
-├── identity.py         # cross-platform identity correlation (perceptual photo hashing + name/bio overlap)
-├── watch.py            # snapshot + diff for --watch mode
-├── sites.json          # 63 site definitions (data, no code)
-├── requirements.txt    # aiohttp, aiodns, brotli, curl_cffi, Pillow, imagehash, opencv-python, playwright
-└── README.md
+├── phantom              # bash wrapper (the CLI entry point)
+├── checker.py           # 48-line shim (back-compat); calls cli.main()
+├── cli.py               # argparse + main() orchestration
+├── models.py            # Site, CheckResult, evaluate(), bot-wall detection
+├── scanner.py           # async scan driver (aiohttp + curl_cffi + Playwright)
+├── cache.py             # ResponseCache with periodic mid-scan flush
+├── playwright_backend.py# headless Chromium fetcher for js_challenge sites
+├── terminal.py          # ANSI rendering, three-tier + clustered output
+├── dedupe.py            # same-site profile deduplication
+├── emails.py            # Hunter.io email discovery
+├── hints.py             # --identity-hint name-mode filtering
+├── expand.py            # cross-link expansion (--expand)
+├── stylometry.py        # bio fingerprint similarity (impostor signal)
+├── wayback.py           # Wayback Machine CDX integration (--wayback)
+├── github_deep.py       # GitHub orgs/starred/commit-email (--github-deep)
+├── photo_ocr.py         # avatar OCR (--photo-ocr)
+├── self_check.py        # canary-handle drift detector (--self-check)
+├── discover_site.py     # auto-propose sites.json entries
+├── validate_sites.py    # sites.json schema linter
+├── variants.py          # username variation engine + leetspeak + email-to-handle
+├── enrich.py            # per-site profile extractors (YouTube ytInitialData, Instagram bio_with_entities, …)
+├── identity.py          # cross-platform identity correlation (pHash + name overlap)
+├── disambiguation.py    # cluster found accounts by similarity graph
+├── confidence.py        # 0–100 scoring with evidence trace
+├── watch.py             # snapshot + diff for --watch mode
+├── exporters/           # html, pdf, json, markdown, csv, mermaid
+├── tests/               # 142+ unit tests + golden-file fixtures
+├── sites.json           # 99 site definitions (data, no code)
+├── pyproject.toml       # pip install phantom-osint
+├── Dockerfile           # docker run phantom <username>
+└── requirements.txt
 ```
 
 ## Install
@@ -199,31 +290,79 @@ Every extracted bio also runs through a **language detector** (script-based for 
 
 ### CLI flags
 
+**Input + scope:**
+
 | Flag | Default | Description |
 | --- | --- | --- |
-| `username` | required | The handle to look up. One word → username; two or more words → name mode. Each generated variant is validated against `[A-Za-z0-9_.\-]{1,64}`. |
-| `--exact` | off | Skip the variant engine and check the input verbatim. |
-| `--max-variants N` | 0 | Cap the number of variants checked. `0` = no cap. |
-| `--list-variants` | off | Print the generated variants and exit (no network calls). |
-| `--sites PATH` | `sites.json` next to script | Custom sites file. |
-| `--concurrency N` | 25 | Parallel in-flight requests *per variant*. |
-| `--timeout SEC` | 15 | Per-request timeout. |
-| `--min-reliability N` | 0 | Skip sites scoring below `N`. |
+| `username` | required | One word → username; two+ words → name mode. Validated against `[A-Za-z0-9_.\-]{1,64}`. Accepts an email — local-part used. |
+| `--exact` | off | Skip the variant engine; check input verbatim. |
+| `--parse URL` | off | Extract the handle from a profile URL and scan that (implies `--exact`). |
+| `--max-variants N` | 0 | Cap variant count. 0 = uncapped. |
+| `--list-variants` | off | Print variants and exit (no network). |
+| `--sites PATH` | `sites.json` | Custom sites file. |
+
+**Site filtering:**
+
+| Flag | Default | Description |
+| --- | --- | --- |
 | `--category NAME` | all | Repeatable: `dev`, `social`, `gaming`, `media`, `forum`, `other`. |
-| `--no-impersonate` | off | Disable curl_cffi browser impersonation, even if installed. |
-| `--no-retry` | off | Disable the single-shot retry on transient failures (timeouts, 5xx, transport errors). |
-| `--no-cache` | off | Disable the on-disk response cache (`~/.cache/phantom/cache.json`, 1h TTL). |
-| `--no-identity` | off | Skip the identity-correlation step (downloading + hashing profile photos to merge cross-platform accounts). |
-| `--watch` | off | Snapshot the FOUND set and diff against the previous run for the same input. Snapshots live in `~/.cache/phantom/snapshots/`. |
-| `--quiet` | off | Suppress the regular scan output. With `--watch`, only the diff is printed (or nothing if there are no changes). Designed for cron. |
-| `--found-only` | off | Print only hits (suppress the `[ ? ]` section). |
-| `--show-all` | off | Include the `[ POSSIBLE IMPOSTOR ]` tier (legacy mode) or list all unrelated clusters individually (cluster mode). |
-| `--no-cluster` | off | Disable identity disambiguation; show the flat three-tier `[ VERIFIED IDENTITY ]` / `[ LIKELY MATCH ]` / `[ POSSIBLE IMPOSTOR ]` output instead. |
-| `--json` | off | Emit JSON to stdout (single object: `input`, `summary`, `found`, `variants`). |
-| `--export FILE` | off | Write a structured report. Format inferred from extension (`.html` / `.json` / `.md` / `.pdf`). |
-| `--dark` | off | Use dark theme for HTML/PDF exports. Mutually exclusive with `--light`. |
-| `--light` | off | Use light theme for HTML/PDF exports (default — same as omitting both flags). |
-| `--no-color` | off | Disable ANSI colors (auto-disabled when stdout is not a TTY). |
+| `--country CC` | all | Repeatable ISO 3166-1 alpha-2 (e.g. `--country us`) or `global`. |
+| `--language LANG` | all | Repeatable ISO 639-1 (e.g. `--language en`). |
+| `--content-type TYPE` | all | Repeatable: `photo`, `text`, `code`, `audio`, `video`, `links`, `mixed`. |
+| `--strict-tags` | off | When tag filters are set, drop sites with no tag set on that field. |
+| `--min-reliability N` | 0 | Skip sites scoring below `N`. |
+
+**Networking + backends:**
+
+| Flag | Default | Description |
+| --- | --- | --- |
+| `--concurrency N` | 25 | Parallel in-flight requests. |
+| `--per-host-concurrency N` | 3 | Cap per-host in-flight requests (prevents rate-limit self-DoS). |
+| `--timeout SEC` | 15 | Per-request timeout. |
+| `--no-impersonate` | off | Disable curl_cffi Chrome TLS impersonation. |
+| `--js-render` | off | Route every site through Playwright (slow, useful for restricted networks). |
+| `--js-concurrency N` | 3 | Max in-flight Playwright pages. |
+| `--proxy URL` | none | Route via HTTP/SOCKS proxy (e.g. `socks5://127.0.0.1:9050`). |
+| `--no-retry` | off | Disable single-shot retry on transient failures. |
+| `--no-cache` | off | Disable on-disk cache. |
+| `--resume` | off | Extend cache TTL to 7d and print reuse-ratio summary. |
+
+**Expansion / enrichment:**
+
+| Flag | Default | Description |
+| --- | --- | --- |
+| `--expand` | off | After scan, harvest @handles from linked-account fields and run another pass. |
+| `--expand-depth N` | 2 | Max recursion rounds (clamped to 4). |
+| `--expand-max-handles N` | 50 | Cap on total new handles scanned. |
+| `--expand-max-time S` | 300 | Wall-clock cap on expansion. |
+| `--wayback` | off | Query Wayback Machine for each FOUND URL's oldest snapshot. |
+| `--github-deep` | off | Fetch GitHub orgs, starred repos, verified social accounts, commit-email leak. |
+| `--photo-ocr` | off | Tesseract OCR on avatars; feeds handle-shaped text into the variant queue. |
+| `--email` | off | Hunter.io email-finder per FOUND profile (requires `phantom --api add hunter <key>`). |
+| `--identity-hint REPORT.json` | none | Filter FOUND hits in name mode against a previous report's country/language. |
+
+**Output + reports:**
+
+| Flag | Default | Description |
+| --- | --- | --- |
+| `--found-only` | off | Only print hits. |
+| `--show-all` | off | Include possible-impostor accounts in terminal output. |
+| `--no-cluster` | off | Disable disambiguation clustering; show three-tier output. |
+| `--no-identity` | off | Skip identity-correlation step. |
+| `--json` | off | Emit JSON to stdout. |
+| `--export FILE` | off | Write structured report. Format from extension: `.html` `.pdf` `.json` `.md` `.csv` `.mmd`. |
+| `--dark` / `--light` | light | Theme for HTML/PDF exports. |
+| `--no-color` | off | Disable ANSI colors. |
+
+**Operational:**
+
+| Flag | Default | Description |
+| --- | --- | --- |
+| `--self-check` | off | Probe canary handles, report drifted sites (suggests auto-disable after 3 consecutive failures). |
+| `--self-check-verbose` | off | Print every canary result, not just drifted ones. |
+| `--watch` | off | Snapshot FOUND set and diff against previous run. |
+| `--quiet` | off | Suppress regular output (cron-friendly with `--watch`). |
+| `--api ARG ...` | — | Manage stored API keys (`--api add SERVICE KEY` / `--api list`). |
 
 ## Confidence ranking
 
@@ -554,7 +693,9 @@ Required fields: `name`, `category`, `url`, `method`, `reliability`.
 | `invalid_status` | `[]` | Status codes that count as "user does not exist". Always wins, even on `method=message`. |
 | `presence_text` | `[]` | Substring patterns (with `{username}`) that, if any matches the body, count as a positive hit. Required for `method=message` to FOUND. |
 | `absence_text` | `[]` | Substring patterns (with `{username}`) that, if any matches the body, mean MISSING. Always wins over `valid_status`. |
-| `protection` | `[]` | Bot-protection flags. `["tls_fingerprint"]` routes the request through `curl_cffi` with Chrome TLS impersonation. |
+| `protection` | `[]` | Bot-protection flags. `["tls_fingerprint"]` routes through `curl_cffi`; `["js_challenge"]` routes through Playwright (headless Chromium). |
+| `country` / `language` / `content_type` | none | Tags for `--country` / `--language` / `--content-type` filters. |
+| `disabled` | `false` | When `true`, the site is skipped entirely. Used by the `--self-check` auto-disable suggestion path. |
 | `headers` | `{}` | Per-site headers. If `User-Agent` is set here, default headers are *replaced* (not merged) — important so e.g. a `curl/8.6.0` UA doesn't get paired with browser-shaped Accept-Encoding. |
 | `request_method` | `"GET"` | `"GET"` or `"POST"`. |
 | `request_body` | `null` | Raw POST body (with `{username}` substitution). Used for GraphQL/JSON-API sites like AniList. |

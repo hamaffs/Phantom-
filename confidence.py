@@ -25,6 +25,13 @@ TIER_VERIFIED = "verified_identity"
 TIER_LIKELY   = "likely_match"
 TIER_IMPOSTOR = "possible_impostor"
 
+# Tiers for MISSING results — the asymmetry the previous version had
+# where FOUND came with judgment but MISSING was an unlabelled mass.
+# Surfacing "confident MISSING" matters for OSINT: "this handle does NOT
+# exist on this platform" is itself an investigation finding.
+TIER_MISSING_CONFIRMED = "confirmed_missing"
+TIER_MISSING_UNCERTAIN = "uncertain_missing"
+
 # ---------------------------------------------------------------------------
 # Default / placeholder avatar heuristics
 # ---------------------------------------------------------------------------
@@ -128,16 +135,75 @@ def tier_from_score(score: int) -> str:
     return TIER_IMPOSTOR
 
 
+def missing_tier(r: "CheckResult") -> str:
+    """Classify a MISSING result by confidence.
+
+    A "confirmed missing" verdict requires:
+      - the site's reliability score ≥ 80, AND
+      - the reason wasn't a retried or cached verdict (we want the
+        cleanest possible signal — a fresh 4xx from a reliable site
+        is the strongest "this user doesn't exist" we can produce).
+
+    Everything else is "uncertain missing". Low-reliability sites,
+    `unexpected-NNN` cases, and reasons containing a retry/cache tag
+    fall here.
+
+    The signal: when a single high-reliability platform cleanly returns
+    MISSING, that's near-proof the username is unused there. Surfacing
+    this in reports lets OSINT analysts say "definitely not on Twitter"
+    with the same confidence they'd say "found on Instagram".
+    """
+    if r.exists is not False:
+        return ""
+    reason = r.reason or ""
+    if "+retry" in reason or "+cached" in reason:
+        return TIER_MISSING_UNCERTAIN
+    if r.reliability < 80:
+        return TIER_MISSING_UNCERTAIN
+    # `absence` (matched an absence_text pattern) and clean numeric
+    # status reasons (e.g. "404") are the gold-standard missing signals.
+    if reason == "absence" or (reason.isdigit() and 400 <= int(reason) < 500):
+        return TIER_MISSING_CONFIRMED
+    return TIER_MISSING_UNCERTAIN
+
+
+def annotate_missing(found_or_unknown_or_missing: list["CheckResult"]) -> None:
+    """Stamp `missing_tier` onto every MISSING result's `.tier` field
+    in-place. Idempotent — calling twice produces no change.
+
+    The FOUND tier is set by score_all; this is its mirror image for
+    the MISSING side. After this runs, every CheckResult that wasn't
+    UNKNOWN has a meaningful .tier value.
+    """
+    for r in found_or_unknown_or_missing:
+        if r.exists is False and not r.tier:
+            r.tier = missing_tier(r)
+
+
 def score_result(
     r: "CheckResult",
     all_found: list["CheckResult"],
     clusters: list,
     subject_name: str,
     input_username: str,
+    trace: list[dict] | None = None,
 ) -> int:
-    """Return a 0–100 confidence score for one FOUND result."""
+    """Return a 0–100 confidence score for one FOUND result.
+
+    When `trace` is provided, every signal that fires appends a
+    ``{"label": str, "weight": int}`` entry to it. The HTML dossier uses
+    this to render a per-account "Why this score" breakdown — the kind
+    of judgment Phantom does that Maigret simply doesn't.
+    """
     p = r.profile or {}
     score = 0
+
+    def fire(label: str, weight: int) -> None:
+        """Helper: apply a signal's weight and record it in the trace."""
+        nonlocal score
+        score += weight
+        if trace is not None:
+            trace.append({"label": label, "weight": weight})
 
     # ------------------------------------------------------------------
     # Pre-compute shared data that multiple signals need
@@ -175,83 +241,64 @@ def score_result(
     # Positive signals
     # ------------------------------------------------------------------
 
-    # +50  verified badge on the platform itself
     if p.get("verified") is True:
-        score += 50
+        fire("verified badge on platform", 50)
 
-    # +30  photo perceptually matches another FOUND account (photo cluster)
     if this_photo and this_photo in multi_cluster_photo_urls:
-        score += 30
+        fire("profile photo matches another account", 30)
 
-    # +25  bio or linked website cross-references another confirmed account
     bio_website = (
         (p.get("bio") or "") + " " + (p.get("website") or "")
     ).lower()
     if found_domains and any(d in bio_website for d in found_domains):
-        score += 25
+        fire("bio / website links to another found account", 25)
 
-    # +20  follower count is consistent with the rest of the found set.
-    #       "Consistent" = within two orders of magnitude of the median of
-    #       accounts that have follower data. Requires at least 2 data points
-    #       so a single-account scan doesn't trigger the penalty branch below.
     if all_fc and this_fc is not None and this_fc > 0 and len(all_fc) >= 2:
         try:
             med = statistics.median(all_fc)
             if med > 0:
                 ratio = max(float(this_fc), med) / min(float(this_fc), med)
-                if ratio <= 100:   # two orders of magnitude
-                    score += 20
+                if ratio <= 100:
+                    fire("follower count consistent with other accounts", 20)
         except statistics.StatisticsError:
             pass
 
-    # +15  display name matches inferred subject name (case-insensitive,
-    #       substring-fuzzy so "Pewdiepie" matches "PewDiePie" etc.)
     if subject_name:
         def _norm(s: str) -> str:
             return re.sub(r"[^a-z0-9]", "", s.lower())
         sn = _norm(subject_name)
         dn = _norm(p.get("display_name") or "")
         if sn and dn and (sn in dn or dn in sn):
-            score += 15
+            fire("display name matches subject", 15)
 
-    # +10  account shows signs of genuine activity
     has_posts = (p.get("posts") or 0) > 0
     days_ago = _joined_days_ago(p.get("joined") or "")
     has_old_join = days_ago is not None and days_ago > 180
     if has_posts or has_old_join:
-        score += 10
+        fire("account is active (posts or aged > 6 months)", 10)
 
-    # +20  variant is the bare input username (no separators, no numbers).
-    #      An exact handle match is a strong anchor: impostors almost always
-    #      use a modified variant (suffix, number, prefix).
     if r.variant and r.variant.lower() == input_username.lower():
-        score += 20
+        fire("exact handle match (no suffix, no separator)", 20)
 
     # ------------------------------------------------------------------
     # Negative signals
     # ------------------------------------------------------------------
 
-    # -25  zero posts AND zero followers (parked / placeholder account)
     fc_val = p.get("followers")
     posts_val = p.get("posts")
     if (fc_val is not None and int(fc_val) == 0
             and posts_val is not None and int(posts_val) == 0):
-        score -= 25
+        fire("parked / placeholder account (0 posts, 0 followers)", -25)
 
-    # -20  default or placeholder profile photo
     if _is_default_avatar(this_photo):
-        score -= 20
+        fire("default or placeholder profile photo", -20)
 
-    # -15  has a non-default photo that is not shared with any other
-    #       found account (only penalise when photo-matching is working)
     if (this_photo
             and not _is_default_avatar(this_photo)
             and has_any_multi_cluster
             and this_photo not in multi_cluster_photo_urls):
-        score -= 15
+        fire("photo does not match any photo cluster", -15)
 
-    # -15  variant has an impostor affix AND the plain variant was also
-    #       found on the same platform (the plain one is more likely real)
     if _has_impostor_affix(r.variant or ""):
         plain_on_same_site = any(
             other.site == r.site
@@ -260,10 +307,8 @@ def score_result(
             for other in all_found
         )
         if plain_on_same_site:
-            score -= 15
+            fire("impostor affix (real/official/the…) coexists with plain handle", -15)
 
-    # -10  very low follower count while the subject clearly has a large
-    #       audience elsewhere (huge audience-size mismatch)
     max_fc_elsewhere = 0
     if len(all_found) > 1:
         others = [
@@ -276,14 +321,8 @@ def score_result(
     if (fc_val is not None
             and int(fc_val) < 10
             and max_fc_elsewhere > 100_000):
-        score -= 10
+        fire("audience size mismatch (<10 here, >100k elsewhere)", -10)
 
-    # -20  variant has a number suffix (e.g. pewdiepie123, pewdiepie99)
-    #      AND the bare variant (e.g. pewdiepie) was also FOUND on the same
-    #      platform.  Co-existence of both strongly suggests the numbered
-    #      account is an impostor of the real one.  Only fires when both are
-    #      on the same site so 'hamaffs1' on a platform where 'hamaffs' was
-    #      never found is not penalised.
     if r.variant and re.search(r'\d+$', r.variant):
         bare = re.sub(r'\d+$', '', r.variant).rstrip('-_.')
         if bare and any(
@@ -292,7 +331,7 @@ def score_result(
             and (other.variant or "").lower() == bare.lower()
             for other in all_found
         ):
-            score -= 20
+            fire("numbered variant coexists with bare on same platform", -20)
 
     return max(0, min(100, score))
 
@@ -306,12 +345,32 @@ def score_all(
     clusters: list,
     subject_name: str,
     input_username: str,
+    expand_source_map: dict[str, int] | None = None,
 ) -> None:
     """Attach .score and .tier to every result in *found* (in-place).
 
     Idempotent: safe to call multiple times; rescores every time.
+
+    `expand_source_map`: optional `{lower(variant) -> boost_int}` from the
+    cross-link expansion. Handles discovered via a strong source (Keybase
+    proof, JSON-LD sameAs, GitHub x_handle) get a starting boost added
+    after the base score is computed. The boost reflects how confident we
+    are the discovered handle belongs to the same person, independent of
+    the scan's own signals.
     """
+    expand_source_map = expand_source_map or {}
     for r in found:
-        s = score_result(r, found, clusters, subject_name, input_username)
+        trace: list[dict] = []
+        s = score_result(
+            r, found, clusters, subject_name, input_username, trace=trace,
+        )
+        boost = expand_source_map.get((r.variant or "").lower(), 0)
+        if boost:
+            s = max(0, min(100, s + boost))
+            trace.append({
+                "label": "discovered via cross-link expansion (source bonus)",
+                "weight": boost,
+            })
         r.score = s
         r.tier = tier_from_score(s)
+        r.signals = trace

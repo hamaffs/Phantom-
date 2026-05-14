@@ -240,6 +240,21 @@ def _pair_weight(
     if lang_a and lang_b and lang_a == lang_b:
         w += 1
 
+    # Stylometric bio match: punctuation / capitalization / lexical
+    # fingerprint similarity above the (intentionally strict) threshold.
+    # Conservative weight (+2) — bios are short and stylometry alone is
+    # never enough to merge two accounts, but it tips the scale on
+    # otherwise ambiguous edges. This is the signal that catches an
+    # impostor reusing a display-name but writing in a clearly different
+    # voice (lowercase-only vs ALL CAPS, em-dash vs straight hyphen,
+    # heavy emoji vs none).
+    try:
+        from stylometry import STYLE_MATCH_WEIGHT, is_style_match
+        if is_style_match(pa.get('bio') or '', pb.get('bio') or ''):
+            w += STYLE_MATCH_WEIGHT
+    except ImportError:
+        pass  # stylometry is in-tree; this guard is defensive only
+
     # Account creation dates within 12 months
     joined_a = pa.get('joined') or ''
     joined_b = pb.get('joined') or ''

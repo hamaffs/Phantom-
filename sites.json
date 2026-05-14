@@ -18,7 +18,10 @@
     "absence_text": [
       "<title>Page not found"
     ],
-    "reliability": 95
+    "reliability": 95,
+    "country": "global",
+    "language": "en",
+    "content_type": "code"
   },
   {
     "name": "GitLab",
@@ -35,7 +38,10 @@
     "protection": [
       "tls_fingerprint"
     ],
-    "reliability": 90
+    "reliability": 90,
+    "country": "global",
+    "language": "en",
+    "content_type": "code"
   },
   {
     "name": "Bitbucket",
@@ -48,7 +54,10 @@
     "invalid_status": [
       404
     ],
-    "reliability": 85
+    "reliability": 85,
+    "country": "global",
+    "language": "en",
+    "content_type": "code"
   },
   {
     "name": "CodePen",
@@ -65,7 +74,10 @@
     "protection": [
       "tls_fingerprint"
     ],
-    "reliability": 90
+    "reliability": 90,
+    "country": "global",
+    "language": "en",
+    "content_type": "code"
   },
   {
     "name": "Replit",
@@ -78,7 +90,10 @@
     "invalid_status": [
       404
     ],
-    "reliability": 85
+    "reliability": 85,
+    "country": "global",
+    "language": "en",
+    "content_type": "code"
   },
   {
     "name": "Dev.to",
@@ -97,7 +112,10 @@
     ],
     "absence_text": [
       "404: Page Not Found</title>"
-    ]
+    ],
+    "country": "global",
+    "language": "en",
+    "content_type": "text"
   },
   {
     "name": "HackerNews",
@@ -111,7 +129,10 @@
     "absence_text": [
       "No such user."
     ],
-    "reliability": 95
+    "reliability": 95,
+    "country": "global",
+    "language": "en",
+    "content_type": "text"
   },
   {
     "name": "Codewars",
@@ -131,7 +152,10 @@
     "absence_text": [
       "\"reason\":\"not_found\""
     ],
-    "reliability": 95
+    "reliability": 95,
+    "country": "global",
+    "language": "en",
+    "content_type": "code"
   },
   {
     "name": "HackerRank",
@@ -146,7 +170,10 @@
       "Programming Problems and Competitions :: HackerRank",
       "<title>HackerRank</title>"
     ],
-    "reliability": 80
+    "reliability": 80,
+    "country": "global",
+    "language": "en",
+    "content_type": "code"
   },
   {
     "name": "LeetCode",
@@ -169,7 +196,10 @@
     "protection": [
       "tls_fingerprint"
     ],
-    "reliability": 90
+    "reliability": 90,
+    "country": "global",
+    "language": "en",
+    "content_type": "code"
   },
   {
     "name": "Kaggle",
@@ -185,7 +215,10 @@
     "headers": {
       "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0"
     },
-    "reliability": 80
+    "reliability": 80,
+    "country": "global",
+    "language": "en",
+    "content_type": "code"
   },
   {
     "name": "npm",
@@ -198,7 +231,10 @@
     "invalid_status": [
       404
     ],
-    "reliability": 95
+    "reliability": 95,
+    "country": "global",
+    "language": "en",
+    "content_type": "code"
   },
   {
     "name": "Linktree",
@@ -218,7 +254,10 @@
     "protection": [
       "tls_fingerprint"
     ],
-    "reliability": 90
+    "reliability": 90,
+    "country": "global",
+    "language": "global",
+    "content_type": "links"
   },
   {
     "name": "Hashnode",
@@ -232,7 +271,10 @@
       "<title>User not found",
       "\"user\":null"
     ],
-    "reliability": 90
+    "reliability": 90,
+    "country": "global",
+    "language": "en",
+    "content_type": "text"
   },
   {
     "name": "Twitter",
@@ -255,7 +297,10 @@
     "protection": [
       "tls_fingerprint"
     ],
-    "reliability": 85
+    "reliability": 85,
+    "country": "global",
+    "language": "global",
+    "content_type": "text"
   },
   {
     "name": "Instagram",
@@ -281,7 +326,10 @@
       "x-ig-app-id": "936619743392459",
       "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
       "Accept": "*/*"
-    }
+    },
+    "country": "global",
+    "language": "global",
+    "content_type": "photo"
   },
   {
     "name": "Facebook",
@@ -298,7 +346,10 @@
     "headers": {
       "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36"
     },
-    "reliability": 50
+    "reliability": 50,
+    "country": "global",
+    "language": "global",
+    "content_type": "mixed"
   },
   {
     "name": "TikTok",
@@ -315,7 +366,10 @@
     "protection": [
       "tls_fingerprint"
     ],
-    "reliability": 85
+    "reliability": 85,
+    "country": "global",
+    "language": "global",
+    "content_type": "video"
   },
   {
     "name": "LinkedIn",
@@ -326,9 +380,15 @@
       200
     ],
     "invalid_status": [
-      404
+      999
     ],
-    "reliability": 50
+    "reliability": 85,
+    "country": "global",
+    "language": "en",
+    "content_type": "text",
+    "protection": [
+      "js_challenge"
+    ]
   },
   {
     "name": "Reddit",
@@ -351,7 +411,10 @@
     "protection": [
       "tls_fingerprint"
     ],
-    "reliability": 80
+    "reliability": 80,
+    "country": "global",
+    "language": "en",
+    "content_type": "text"
   },
   {
     "name": "Pinterest",
@@ -366,7 +429,10 @@
       "User not found.",
       "@undefined"
     ],
-    "reliability": 85
+    "reliability": 85,
+    "country": "global",
+    "language": "global",
+    "content_type": "photo"
   },
   {
     "name": "Tumblr",
@@ -379,7 +445,10 @@
     "invalid_status": [
       404
     ],
-    "reliability": 90
+    "reliability": 90,
+    "country": "global",
+    "language": "en",
+    "content_type": "mixed"
   },
   {
     "name": "Threads",
@@ -400,7 +469,10 @@
     "headers": {
       "Sec-Fetch-Mode": "navigate"
     },
-    "reliability": 75
+    "reliability": 75,
+    "country": "global",
+    "language": "global",
+    "content_type": "text"
   },
   {
     "name": "Bluesky",
@@ -421,7 +493,10 @@
     "invalid_status": [
       400
     ],
-    "reliability": 95
+    "reliability": 95,
+    "country": "global",
+    "language": "en",
+    "content_type": "text"
   },
   {
     "name": "Mastodon",
@@ -434,7 +509,10 @@
     "invalid_status": [
       404
     ],
-    "reliability": 90
+    "reliability": 90,
+    "country": "global",
+    "language": "global",
+    "content_type": "text"
   },
   {
     "name": "VK",
@@ -449,7 +527,10 @@
       "Page not found",
       "404 Not Found"
     ],
-    "reliability": 75
+    "reliability": 75,
+    "country": "ru",
+    "language": "ru",
+    "content_type": "mixed"
   },
   {
     "name": "Steam",
@@ -464,7 +545,10 @@
       "The specified profile could not be found",
       "<title>Steam Community :: Error</title>"
     ],
-    "reliability": 95
+    "reliability": 95,
+    "country": "global",
+    "language": "global",
+    "content_type": "mixed"
   },
   {
     "name": "Twitch",
@@ -485,7 +569,10 @@
     "absence_text": [
       "404 Page Not Found"
     ],
-    "reliability": 85
+    "reliability": 85,
+    "country": "global",
+    "language": "global",
+    "content_type": "video"
   },
   {
     "name": "Chess.com",
@@ -504,7 +591,10 @@
     "headers": {
       "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.114 Safari/537.36"
     },
-    "reliability": 90
+    "reliability": 90,
+    "country": "global",
+    "language": "global",
+    "content_type": "mixed"
   },
   {
     "name": "Lichess",
@@ -518,7 +608,10 @@
     "absence_text": [
       "No such player"
     ],
-    "reliability": 95
+    "reliability": 95,
+    "country": "global",
+    "language": "global",
+    "content_type": "mixed"
   },
   {
     "name": "Speedrun",
@@ -535,7 +628,10 @@
     "protection": [
       "tls_fingerprint"
     ],
-    "reliability": 85
+    "reliability": 85,
+    "country": "global",
+    "language": "en",
+    "content_type": "video"
   },
   {
     "name": "Roblox",
@@ -554,7 +650,10 @@
     "protection": [
       "tls_fingerprint"
     ],
-    "reliability": 90
+    "reliability": 90,
+    "country": "global",
+    "language": "global",
+    "content_type": "mixed"
   },
   {
     "name": "Minecraft",
@@ -575,7 +674,10 @@
       404,
       204
     ],
-    "reliability": 95
+    "reliability": 95,
+    "country": "global",
+    "language": "global",
+    "content_type": "mixed"
   },
   {
     "name": "VSCO",
@@ -594,7 +696,10 @@
     "protection": [
       "tls_fingerprint"
     ],
-    "reliability": 90
+    "reliability": 90,
+    "country": "global",
+    "language": "en",
+    "content_type": "photo"
   },
   {
     "name": "YouTube",
@@ -614,7 +719,10 @@
       "Accept": "*/*",
       "Accept-Language": "en-US,en;q=0.9"
     },
-    "reliability": 90
+    "reliability": 90,
+    "country": "global",
+    "language": "global",
+    "content_type": "video"
   },
   {
     "name": "Vimeo",
@@ -630,7 +738,10 @@
     "invalid_status": [
       404
     ],
-    "reliability": 85
+    "reliability": 85,
+    "country": "global",
+    "language": "global",
+    "content_type": "video"
   },
   {
     "name": "SoundCloud",
@@ -648,7 +759,10 @@
     "protection": [
       "tls_fingerprint"
     ],
-    "reliability": 90
+    "reliability": 90,
+    "country": "global",
+    "language": "global",
+    "content_type": "audio"
   },
   {
     "name": "Last.fm",
@@ -668,7 +782,10 @@
     "protection": [
       "tls_fingerprint"
     ],
-    "reliability": 95
+    "reliability": 95,
+    "country": "global",
+    "language": "en",
+    "content_type": "audio"
   },
   {
     "name": "Bandcamp",
@@ -682,7 +799,10 @@
       "<title>Signup | Bandcamp</title>",
       "new_domain="
     ],
-    "reliability": 85
+    "reliability": 85,
+    "country": "global",
+    "language": "global",
+    "content_type": "audio"
   },
   {
     "name": "Behance",
@@ -695,7 +815,10 @@
     "invalid_status": [
       404
     ],
-    "reliability": 85
+    "reliability": 85,
+    "country": "global",
+    "language": "global",
+    "content_type": "photo"
   },
   {
     "name": "Dribbble",
@@ -714,7 +837,10 @@
     "invalid_status": [
       404
     ],
-    "reliability": 90
+    "reliability": 90,
+    "country": "global",
+    "language": "en",
+    "content_type": "photo"
   },
   {
     "name": "DeviantArt",
@@ -730,7 +856,10 @@
     "protection": [
       "tls_fingerprint"
     ],
-    "reliability": 90
+    "reliability": 90,
+    "country": "global",
+    "language": "en",
+    "content_type": "photo"
   },
   {
     "name": "Flickr",
@@ -743,7 +872,10 @@
     "invalid_status": [
       404
     ],
-    "reliability": 85
+    "reliability": 85,
+    "country": "global",
+    "language": "global",
+    "content_type": "photo"
   },
   {
     "name": "Medium",
@@ -760,7 +892,10 @@
     "protection": [
       "tls_fingerprint"
     ],
-    "reliability": 90
+    "reliability": 90,
+    "country": "global",
+    "language": "en",
+    "content_type": "text"
   },
   {
     "name": "Substack",
@@ -781,7 +916,10 @@
       "Search &quot;{username}&quot; on Substack",
       "/search/{username}"
     ],
-    "reliability": 80
+    "reliability": 80,
+    "country": "global",
+    "language": "en",
+    "content_type": "text"
   },
   {
     "name": "Disqus",
@@ -797,7 +935,10 @@
     "presence_text": [
       "Disqus Profile - {username}"
     ],
-    "reliability": 90
+    "reliability": 90,
+    "country": "global",
+    "language": "global",
+    "content_type": "text"
   },
   {
     "name": "Wikipedia",
@@ -814,7 +955,10 @@
     "protection": [
       "tls_fingerprint"
     ],
-    "reliability": 95
+    "reliability": 95,
+    "country": "global",
+    "language": "global",
+    "content_type": "text"
   },
   {
     "name": "Letterboxd",
@@ -832,7 +976,10 @@
     "protection": [
       "tls_fingerprint"
     ],
-    "reliability": 90
+    "reliability": 90,
+    "country": "global",
+    "language": "en",
+    "content_type": "text"
   },
   {
     "name": "Wattpad",
@@ -847,7 +994,10 @@
       "userError-404",
       "User Not Found"
     ],
-    "reliability": 85
+    "reliability": 85,
+    "country": "global",
+    "language": "global",
+    "content_type": "text"
   },
   {
     "name": "AniList",
@@ -872,7 +1022,10 @@
       "Content-Type": "application/json",
       "Accept": "application/json"
     },
-    "reliability": 95
+    "reliability": 95,
+    "country": "global",
+    "language": "en",
+    "content_type": "text"
   },
   {
     "name": "Pastebin",
@@ -893,7 +1046,10 @@
     "invalid_status": [
       404
     ],
-    "reliability": 90
+    "reliability": 90,
+    "country": "global",
+    "language": "global",
+    "content_type": "code"
   },
   {
     "name": "Imgur",
@@ -909,7 +1065,10 @@
     "presence_text": [
       "\"username\":\"{username}\""
     ],
-    "reliability": 90
+    "reliability": 90,
+    "country": "global",
+    "language": "en",
+    "content_type": "photo"
   },
   {
     "name": "Patreon",
@@ -929,7 +1088,10 @@
     "protection": [
       "tls_fingerprint"
     ],
-    "reliability": 90
+    "reliability": 90,
+    "country": "global",
+    "language": "en",
+    "content_type": "mixed"
   },
   {
     "name": "Ko-fi",
@@ -954,7 +1116,10 @@
     "protection": [
       "tls_fingerprint"
     ],
-    "reliability": 60
+    "reliability": 60,
+    "country": "global",
+    "language": "en",
+    "content_type": "mixed"
   },
   {
     "name": "BuyMeACoffee",
@@ -975,7 +1140,10 @@
     "invalid_status": [
       404
     ],
-    "reliability": 85
+    "reliability": 85,
+    "country": "global",
+    "language": "en",
+    "content_type": "mixed"
   },
   {
     "name": "About.me",
@@ -991,7 +1159,10 @@
     "reliability": 90,
     "presence_text": [
       " on about.me</title>"
-    ]
+    ],
+    "country": "global",
+    "language": "en",
+    "content_type": "links"
   },
   {
     "name": "Keybase",
@@ -1005,7 +1176,10 @@
       "\"name\":\"NOT_FOUND\"",
       "\"name\":\"INPUT_ERROR\""
     ],
-    "reliability": 95
+    "reliability": 95,
+    "country": "global",
+    "language": "en",
+    "content_type": "code"
   },
   {
     "name": "Telegram",
@@ -1019,7 +1193,10 @@
     "absence_text": [
       "Telegram: Contact @{username}"
     ],
-    "reliability": 80
+    "reliability": 80,
+    "country": "global",
+    "language": "global",
+    "content_type": "mixed"
   },
   {
     "name": "Gravatar",
@@ -1039,7 +1216,10 @@
     "invalid_status": [
       404
     ],
-    "reliability": 95
+    "reliability": 95,
+    "country": "global",
+    "language": "global",
+    "content_type": "photo"
   },
   {
     "name": "Beacons",
@@ -1055,7 +1235,10 @@
     "protection": [
       "tls_fingerprint"
     ],
-    "reliability": 90
+    "reliability": 90,
+    "country": "global",
+    "language": "en",
+    "content_type": "links"
   },
   {
     "name": "Bio.link",
@@ -1068,7 +1251,10 @@
     "invalid_status": [
       404
     ],
-    "reliability": 85
+    "reliability": 85,
+    "country": "global",
+    "language": "en",
+    "content_type": "links"
   },
   {
     "name": "Carrd",
@@ -1081,7 +1267,10 @@
     "invalid_status": [
       404
     ],
-    "reliability": 90
+    "reliability": 90,
+    "country": "global",
+    "language": "en",
+    "content_type": "links"
   },
   {
     "name": "Mixcloud",
@@ -1094,6 +1283,850 @@
     "invalid_status": [
       404
     ],
-    "reliability": 85
+    "reliability": 85,
+    "country": "global",
+    "language": "global",
+    "content_type": "audio"
+  },
+  {
+    "name": "Codeforces",
+    "category": "dev",
+    "url": "https://codeforces.com/profile/{username}",
+    "method": "message",
+    "reliability": 85,
+    "valid_status": [
+      200
+    ],
+    "presence_text": [
+      "000\">{username}",
+      "alt=\"{username}",
+      "blog/{username}"
+    ],
+    "country": "global",
+    "language": "en",
+    "content_type": "code"
+  },
+  {
+    "name": "AtCoder",
+    "category": "dev",
+    "url": "https://atcoder.jp/users/{username}",
+    "method": "status",
+    "reliability": 85,
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "presence_text": [
+      "/que_{username}",
+      "@que_{username}",
+      "_id\">{username}"
+    ],
+    "absence_text": [
+      "User not found",
+      "Page Not Found",
+      "404 Not Found"
+    ],
+    "country": "jp",
+    "language": "en",
+    "content_type": "code"
+  },
+  {
+    "name": "Exercism",
+    "category": "dev",
+    "url": "https://exercism.org/profiles/{username}",
+    "method": "status",
+    "reliability": 80,
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "presence_text": [
+      "es%2F{username}",
+      "iles/{username}",
+      "es%2F{username}\">L"
+    ],
+    "absence_text": [
+      "Page not found"
+    ],
+    "country": "global",
+    "language": "en",
+    "content_type": "code"
+  },
+  {
+    "name": "Codeberg",
+    "category": "dev",
+    "url": "https://codeberg.org/{username}",
+    "method": "status",
+    "reliability": 85,
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "absence_text": [
+      "Page not found",
+      "does not exist"
+    ],
+    "country": "global",
+    "language": "en",
+    "content_type": "code"
+  },
+  {
+    "name": "Gitea",
+    "category": "dev",
+    "url": "https://gitea.com/{username}",
+    "method": "status",
+    "reliability": 80,
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "presence_text": [
+      "for {username}",
+      "svg {username}",
+      ".com/{username}"
+    ],
+    "absence_text": [
+      "Page Not Found",
+      "does not exist",
+      "404 Not Found"
+    ],
+    "country": "global",
+    "language": "en",
+    "content_type": "code"
+  },
+  {
+    "name": "RubyGems",
+    "category": "dev",
+    "url": "https://rubygems.org/profiles/{username}",
+    "method": "status",
+    "reliability": 80,
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "presence_text": [
+      "e of {username}",
+      "iles/{username}",
+      "e of {username} | "
+    ],
+    "absence_text": [
+      "Page not found"
+    ],
+    "country": "global",
+    "language": "en",
+    "content_type": "code"
+  },
+  {
+    "name": "Packagist",
+    "category": "dev",
+    "url": "https://packagist.org/users/{username}/packages/",
+    "method": "status",
+    "reliability": 80,
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "presence_text": [
+      "{username}   ",
+      "d by {username}",
+      "sers/{username}"
+    ],
+    "country": "global",
+    "language": "en",
+    "content_type": "code"
+  },
+  {
+    "name": "Modrinth",
+    "category": "gaming",
+    "url": "https://modrinth.com/user/{username}",
+    "method": "status",
+    "reliability": 80,
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "presence_text": [
+      ".com/{username}",
+      "2U\",\"{username}",
+      "9e16>{username}"
+    ],
+    "absence_text": [
+      "User not found"
+    ],
+    "country": "global",
+    "language": "en",
+    "content_type": "code"
+  },
+  {
+    "name": "Odysee",
+    "category": "media",
+    "url": "https://odysee.com/@{username}",
+    "method": "message",
+    "reliability": 80,
+    "valid_status": [
+      200
+    ],
+    "presence_text": [
+      "2F%40{username}",
+      "bed/@{username}",
+      "com/@{username}"
+    ],
+    "country": "global",
+    "language": "global",
+    "content_type": "video"
+  },
+  {
+    "name": "Audiomack",
+    "category": "media",
+    "url": "https://audiomack.com/{username}",
+    "method": "message",
+    "reliability": 80,
+    "valid_status": [
+      200
+    ],
+    "presence_text": [
+      "\":\\\"/{username}",
+      "- -->{username}",
+      "/www.{username}"
+    ],
+    "country": "global",
+    "language": "en",
+    "content_type": "audio"
+  },
+  {
+    "name": "ReverbNation",
+    "category": "media",
+    "url": "https://www.reverbnation.com/{username}",
+    "method": "status",
+    "reliability": 75,
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "presence_text": [
+      ".com/{username}",
+      "com//{username}",
+      "f=\\\"/{username}"
+    ],
+    "absence_text": [
+      "Page Not Found"
+    ],
+    "country": "global",
+    "language": "en",
+    "content_type": "audio"
+  },
+  {
+    "name": "MyAnimeList",
+    "category": "forum",
+    "url": "https://myanimelist.net/profile/{username}",
+    "method": "status",
+    "reliability": 85,
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "presence_text": [
+      "out {username}",
+      "blog/{username}",
+      "ch?u={username}"
+    ],
+    "absence_text": [
+      "doesn't exist",
+      "404 Not Found"
+    ],
+    "country": "global",
+    "language": "en",
+    "content_type": "text"
+  },
+  {
+    "name": "Habr",
+    "category": "forum",
+    "url": "https://habr.com/en/users/{username}/",
+    "method": "status",
+    "reliability": 80,
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "presence_text": [
+      "aka {username}",
+      ".com/{username}",
+      ".me/a{username}"
+    ],
+    "absence_text": [
+      "User not found"
+    ],
+    "country": "ru",
+    "language": "en",
+    "content_type": "text"
+  },
+  {
+    "name": "Plurk",
+    "category": "social",
+    "url": "https://www.plurk.com/{username}",
+    "method": "message",
+    "reliability": 75,
+    "valid_status": [
+      200
+    ],
+    "presence_text": [
+      "></i>{username}",
+      "atch {username}",
+      "e\": \"{username}"
+    ],
+    "absence_text": [
+      "User Not Found"
+    ],
+    "country": "tw",
+    "language": "global",
+    "content_type": "text"
+  },
+  {
+    "name": "Mirror",
+    "category": "media",
+    "url": "https://mirror.xyz/{username}",
+    "method": "message",
+    "reliability": 75,
+    "valid_status": [
+      200
+    ],
+    "presence_text": [
+      "-80\">{username}",
+      ":\\\\\\\"{username}",
+      "Name={username}"
+    ],
+    "country": "global",
+    "language": "en",
+    "content_type": "text"
+  },
+  {
+    "name": "WordPress",
+    "category": "media",
+    "url": "https://{username}.wordpress.com",
+    "method": "message",
+    "reliability": 70,
+    "valid_status": [
+      200
+    ],
+    "presence_text": [
+      "f=\"//{username}",
+      "ress.{username}",
+      "2F%2F{username}.wo"
+    ],
+    "country": "global",
+    "language": "global",
+    "content_type": "text"
+  },
+  {
+    "name": "SourceHut",
+    "category": "dev",
+    "url": "https://sr.ht/~{username}/",
+    "method": "status",
+    "reliability": 80,
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "presence_text": [
+      ".ht/~{username}",
+      "alt=\"{username}",
+      "cts/~{username}"
+    ],
+    "absence_text": [
+      "404 Not Found"
+    ],
+    "country": "global",
+    "language": "en",
+    "content_type": "code"
+  },
+  {
+    "name": "Gitee",
+    "category": "dev",
+    "url": "https://gitee.com/{username}",
+    "method": "status",
+    "reliability": 75,
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "presence_text": [
+      "git@{username}",
+      "/0/1_{username}",
+      "/www.{username}"
+    ],
+    "protection": [
+      "tls_fingerprint"
+    ],
+    "country": "cn",
+    "language": "global",
+    "content_type": "code"
+  },
+  {
+    "name": "LiveJournal",
+    "category": "media",
+    "url": "https://{username}.livejournal.com",
+    "method": "status",
+    "reliability": 75,
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "presence_text": [
+      "><b>{username}",
+      "\"><b>{username}",
+      "2F%2F{username}"
+    ],
+    "country": "global",
+    "language": "en",
+    "content_type": "text"
+  },
+  {
+    "name": "Steemit",
+    "category": "media",
+    "url": "https://steemit.com/@{username}",
+    "method": "status",
+    "reliability": 75,
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "presence_text": [
+      "at @{username}",
+      "\":\"/@{username}",
+      "\":{\"@{username}"
+    ],
+    "absence_text": [
+      "User Not Found"
+    ],
+    "country": "global",
+    "language": "en",
+    "content_type": "text"
+  },
+  {
+    "name": "Newgrounds",
+    "category": "media",
+    "url": "https://{username}.newgrounds.com",
+    "method": "status",
+    "reliability": 80,
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "presence_text": [
+      "\"\\/\\/{username}",
+      ":\\/\\/{username}",
+      "evel-{username}"
+    ],
+    "protection": [
+      "tls_fingerprint"
+    ],
+    "country": "global",
+    "language": "en",
+    "content_type": "mixed"
+  },
+  {
+    "name": "itch.io",
+    "category": "gaming",
+    "url": "https://{username}.itch.io",
+    "method": "status",
+    "reliability": 80,
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "presence_text": [
+      "le%2F{username}",
+      "ps://{username}",
+      "le%2F{username}&us"
+    ],
+    "absence_text": [
+      "Page not found"
+    ],
+    "protection": [
+      "tls_fingerprint"
+    ],
+    "country": "global",
+    "language": "en",
+    "content_type": "mixed"
+  },
+  {
+    "name": "Songkick",
+    "category": "media",
+    "url": "https://www.songkick.com/users/{username}",
+    "method": "status",
+    "reliability": 75,
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "presence_text": [
+      "{username}.Ev",
+      "new {username}",
+      "ints/{username}"
+    ],
+    "absence_text": [
+      "doesn't exist"
+    ],
+    "country": "global",
+    "language": "en",
+    "content_type": "audio"
+  },
+  {
+    "name": "HuggingFace",
+    "category": "dev",
+    "url": "https://huggingface.co/{username}",
+    "method": "status",
+    "reliability": 85,
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "presence_text": [
+      ".com/{username}",
+      "800\">{username}",
+      "ails/{username}"
+    ],
+    "country": "global",
+    "language": "en",
+    "content_type": "code"
+  },
+  {
+    "name": "Replicate",
+    "category": "dev",
+    "url": "https://replicate.com/{username}",
+    "method": "status",
+    "reliability": 80,
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "presence_text": [
+      "\": \"/{username}",
+      ".com/{username}",
+      "e\": \"{username}"
+    ],
+    "absence_text": [
+      "Page not found"
+    ],
+    "country": "global",
+    "language": "en",
+    "content_type": "code"
+  },
+  {
+    "name": "Devpost",
+    "category": "dev",
+    "url": "https://devpost.com/{username}",
+    "method": "status",
+    "reliability": 80,
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "presence_text": [
+      "= ['{username}",
+      "id=\"{username}",
+      ".com/{username}"
+    ],
+    "absence_text": [
+      "does not exist"
+    ],
+    "country": "global",
+    "language": "en",
+    "content_type": "code"
+  },
+  {
+    "name": "Allmylinks",
+    "category": "social",
+    "url": "https://allmylinks.com/{username}",
+    "method": "status",
+    "reliability": 75,
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "presence_text": [
+      "@{username}   ",
+      ".com/{username}",
+      "/cdn.{username}"
+    ],
+    "absence_text": [
+      "Page not found"
+    ],
+    "country": "global",
+    "language": "global",
+    "content_type": "links"
+  },
+  {
+    "name": "IndieHackers",
+    "category": "forum",
+    "url": "https://www.indiehackers.com/{username}",
+    "method": "message",
+    "reliability": 80,
+    "valid_status": [
+      200
+    ],
+    "presence_text": [
+      ".com/{username}",
+      "dle\">{username}",
+      "en (@{username}"
+    ],
+    "country": "global",
+    "language": "en",
+    "content_type": "text"
+  },
+  {
+    "name": "Pillowfort",
+    "category": "social",
+    "url": "https://www.pillowfort.social/{username}",
+    "method": "status",
+    "reliability": 75,
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "presence_text": [
+      "0_pf-{username}",
+      "cial/{username}",
+      "d_pf-{username}"
+    ],
+    "absence_text": [
+      "does not exist"
+    ],
+    "country": "global",
+    "language": "en",
+    "content_type": "text"
+  },
+  {
+    "name": "Pixiv",
+    "category": "media",
+    "url": "https://www.pixiv.net/en/users/{username}",
+    "method": "status",
+    "reliability": 75,
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "presence_text": [
+      "\"5.3.{username}",
+      ",0,0.{username}",
+      "0 15 {username}"
+    ],
+    "protection": [
+      "tls_fingerprint"
+    ],
+    "country": "jp",
+    "language": "global",
+    "content_type": "photo"
+  },
+  {
+    "name": "Codecademy",
+    "category": "dev",
+    "url": "https://www.codecademy.com/profiles/{username}",
+    "method": "message",
+    "reliability": 75,
+    "valid_status": [
+      200
+    ],
+    "presence_text": [
+      "for {username}",
+      "- -->{username}",
+      "8k0\">{username}"
+    ],
+    "absence_text": [
+      "Profile Not Found"
+    ],
+    "protection": [
+      "tls_fingerprint"
+    ],
+    "country": "global",
+    "language": "en",
+    "content_type": "code"
+  },
+  {
+    "name": "TradingView",
+    "category": "forum",
+    "url": "https://www.tradingview.com/u/{username}",
+    "method": "status",
+    "reliability": 80,
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "presence_text": [
+      ".com/{username}",
+      "ext=\"{username}",
+      "iew\">{username}"
+    ],
+    "absence_text": [
+      "Page not found"
+    ],
+    "protection": [
+      "tls_fingerprint"
+    ],
+    "country": "global",
+    "language": "en",
+    "content_type": "text"
+  },
+  {
+    "name": "Untappd",
+    "category": "social",
+    "url": "https://untappd.com/user/{username}",
+    "method": "status",
+    "reliability": 75,
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "presence_text": [
+      "\"com.{username}",
+      "/fb# {username}",
+      "ame\">{username}"
+    ],
+    "protection": [
+      "tls_fingerprint"
+    ],
+    "country": "global",
+    "language": "en",
+    "content_type": "text"
+  },
+  {
+    "name": "Tildes",
+    "category": "forum",
+    "url": "https://tildes.net/user/{username}",
+    "method": "status",
+    "reliability": 80,
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "presence_text": [
+      ">{username}</a",
+      ">    {username}",
+      "er%2F{username}"
+    ],
+    "country": "global",
+    "language": "en",
+    "content_type": "text"
+  },
+  {
+    "name": "HubPages",
+    "category": "media",
+    "url": "https://hubpages.com/@{username}",
+    "method": "status",
+    "reliability": 75,
+    "valid_status": [
+      200
+    ],
+    "invalid_status": [
+      404
+    ],
+    "presence_text": [
+      ".com/{username}",
+      ":\"\\/@{username}",
+      "Njg5/{username}"
+    ],
+    "absence_text": [
+      "Page Not Found",
+      "does not exist",
+      "user does not exist"
+    ],
+    "country": "global",
+    "language": "en",
+    "content_type": "text"
+  },
+  {
+    "name": "Smule",
+    "category": "media",
+    "url": "https://www.smule.com/{username}",
+    "method": "message",
+    "reliability": 75,
+    "valid_status": [
+      200
+    ],
+    "presence_text": [
+      "'api.{username}",
+      "blog.{username}",
+      "ce\",\"{username}"
+    ],
+    "absence_text": [
+      "Page Not Found"
+    ],
+    "country": "global",
+    "language": "global",
+    "content_type": "audio"
+  },
+  {
+    "name": "PyPI",
+    "category": "dev",
+    "url": "https://pypi.org/user/{username}/",
+    "method": "message",
+    "valid_status": [
+      200
+    ],
+    "presence_text": [
+      "<title>Profile of {username} ·"
+    ],
+    "absence_text": [
+      "<title>Page Not Found (404)"
+    ],
+    "protection": [
+      "js_challenge"
+    ],
+    "reliability": 85,
+    "country": "global",
+    "language": "en",
+    "content_type": "code"
   }
 ]

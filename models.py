@@ -83,6 +83,11 @@ class Site:
     request_method: str = "GET"              # "GET" | "POST"
     request_body: Optional[str] = None       # raw body template (with {username})
     profile_url: Optional[str] = None        # public profile URL when probe URL is an API endpoint
+    # Optional richer metadata for filtering. None = "any / unspecified".
+    country: Optional[str] = None            # ISO 3166-1 alpha-2 (lowercase), or "global"
+    language: Optional[str] = None           # ISO 639-1 (lowercase), or "global"
+    content_type: Optional[str] = None       # photo | text | code | audio | video | links | mixed
+    disabled: bool = False                   # auto-disable flag for known-broken sites
 
     def url_for(self, username: str) -> str:
         return self.url.replace("{username}", username)
@@ -98,6 +103,10 @@ class Site:
     @property
     def needs_impersonation(self) -> bool:
         return "tls_fingerprint" in self.protection
+
+    @property
+    def needs_js_render(self) -> bool:
+        return "js_challenge" in self.protection
 
 
 @dataclass
@@ -119,6 +128,7 @@ class CheckResult:
     tier: Optional[str] = None      # 'verified_identity' | 'likely_match' | 'possible_impostor'
     identity_id: Optional[int] = None        # cluster ID assigned by disambiguation.py
     is_primary_identity: Optional[bool] = None  # True iff this account's cluster is the primary
+    signals: list = field(default_factory=list)  # confidence trace: [{"label": str, "weight": int}, ...]
 
 
 # ---------------------------------------------------------------------------
@@ -129,6 +139,8 @@ def load_sites(path: Path) -> list[Site]:
     raw = json.loads(path.read_text(encoding="utf-8"))
     sites = []
     for entry in raw:
+        if entry.get("disabled"):
+            continue
         sites.append(Site(
             name=entry["name"],
             category=entry["category"],
@@ -144,6 +156,10 @@ def load_sites(path: Path) -> list[Site]:
             request_method=entry.get("request_method", "GET"),
             request_body=entry.get("request_body"),
             profile_url=entry.get("profile_url"),
+            country=entry.get("country"),
+            language=entry.get("language"),
+            content_type=entry.get("content_type"),
+            disabled=False,  # filtered above, never propagates
         ))
     return sites
 # ---------------------------------------------------------------------------

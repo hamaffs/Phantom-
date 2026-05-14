@@ -12,6 +12,7 @@ from exporters.csv_export import export_csv
 from exporters.html_export import export_html
 from exporters.json_export import _build_json_payload, export_json
 from exporters.markdown_export import export_markdown
+from exporters.mermaid_export import export_mermaid
 from exporters.pdf_export import export_pdf
 
 
@@ -21,6 +22,7 @@ _FORMAT_ALIASES = {
     "md": ".md", "markdown": ".md", "txt": ".md",
     "pdf": ".pdf",
     "csv": ".csv",
+    "mmd": ".mmd", "mermaid": ".mmd",
 }
 
 _SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
@@ -85,6 +87,11 @@ def export_report(
         export_markdown(grouped, raw, elapsed, path, overall, clusters, dis_clusters=dis_clusters)
     elif suffix == ".csv":
         export_csv(grouped, raw, elapsed, path)
+    elif suffix == ".mmd":
+        export_mermaid(
+            grouped, raw, elapsed, path,
+            overall=overall, clusters=clusters, dis_clusters=dis_clusters,
+        )
     else:
         export_json(grouped, raw, elapsed, path, overall, clusters, emails, deep_evidence,
                     dis_clusters=dis_clusters)

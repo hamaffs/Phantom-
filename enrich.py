@@ -186,6 +186,70 @@ def extract_twitter(body: str, username: str) -> dict:
     ver = _grab_bool(section, "verified")
     if ver is not None:
         info["verified"] = ver
+
+    # --- Public fields Phantom previously missed ----------------------
+
+    # The user's banner image — sometimes shows a city / country
+    # backdrop the bio doesn't.
+    banner = _grab_str(section, "profile_banner_url")
+    if banner:
+        info["banner"] = banner
+
+    # Default-PFP flag — strong impostor signal. A real person almost
+    # always picks a custom avatar; throwaway / fake accounts often
+    # don't bother. Mirror as a `default_avatar` field so the existing
+    # confidence rule (`_is_default_avatar`) can pick it up too.
+    default_pfp = _grab_bool(section, "default_profile_image")
+    if default_pfp is True:
+        info["default_avatar"] = True
+
+    # Numeric user-id (snowflake or legacy). For accounts created after
+    # 2010-11-04, the snowflake encodes the exact creation time down to
+    # the millisecond — more precise than the API's `created_at` string
+    # (which only resolves to the second). Stash both forms so the
+    # report can show either.
+    id_str = _grab_str(section, "id_str")
+    if id_str and id_str.isdigit():
+        info["user_id"] = id_str
+        # Twitter snowflakes: bits 22..63 = milliseconds since the
+        # Twitter epoch (2010-11-04T01:42:54.657Z). Old sequential IDs
+        # (pre-Nov-2010) don't follow this scheme — recognisable
+        # because the resulting timestamp would be in the future or
+        # before 2006 (Twitter's launch).
+        try:
+            uid = int(id_str)
+            if uid > 0:
+                # Snowflakes started in late 2010 around ID ~30M, so
+                # IDs > 100M are reliably snowflake-encoded.
+                if uid > 100_000_000:
+                    ms_since_twitter_epoch = uid >> 22
+                    twitter_epoch_ms = 1288834974657
+                    ts_ms = ms_since_twitter_epoch + twitter_epoch_ms
+                    from datetime import datetime, timezone as _tz
+                    dt = datetime.fromtimestamp(ts_ms / 1000, tz=_tz.utc)
+                    # Sanity: must be between 2010 and 50 years in
+                    # the future (defensive against malformed IDs).
+                    if 2010 <= dt.year <= 2075:
+                        info["created_precise"] = dt.isoformat(
+                            timespec="seconds",
+                        )
+        except (ValueError, OverflowError):
+            pass
+
+    # withheld_in_countries — list of ISO country codes where Twitter
+    # has restricted the account. Real geo signal when present.
+    withheld_m = re.search(
+        r'"withheld_in_countries":\s*\[([^\]]*)\]', section,
+    )
+    if withheld_m and withheld_m.group(1).strip():
+        codes = [
+            c.strip().strip('"')
+            for c in withheld_m.group(1).split(",")
+            if c.strip().strip('"')
+        ]
+        if codes:
+            info["withheld_in_countries"] = codes
+
     return info
 
 
@@ -255,6 +319,21 @@ def extract_instagram(body: str, username: str) -> dict:
     The body is the raw JSON from
     https://i.instagram.com/api/v1/users/web_profile_info/?username={username}
     which requires the x-ig-app-id header but no login cookie.
+
+    Beyond the basics (name, bio, photo, follower counts), Instagram's
+    API response also exposes:
+
+      - `external_url` — the user's bio-link URL (when set), often a
+        Linktree/Beacons/own-domain. Critical OSINT signal.
+      - `biography_with_entities.entities` — tagged usernames and URLs
+        embedded in the bio. Lets us surface "this profile @-mentions
+        @hama_ffs in their bio" as a linked-account.
+      - `business_email` — when the account is registered as a
+        Professional/Business account and the email is public.
+      - `category_name` — Business-account category label
+        ("Personal Blog", "Musician", etc.)
+      - `fbid_v2` — Meta's cross-platform identity ID (used internally
+        to cross-link Facebook accounts).
     """
     info: dict = {}
     try:
@@ -284,6 +363,55 @@ def extract_instagram(body: str, username: str) -> dict:
         info["verified"] = True
     if user.get("is_private"):
         info["private"] = True
+
+    # External URL — the bio-link Instagram lets users set.
+    ext_url = user.get("external_url")
+    if isinstance(ext_url, str) and ext_url.strip():
+        info["website"] = ext_url.strip()
+
+    # Bio entities — tagged usernames and inline URLs. Surface them as
+    # linked_accounts (with proper scheme) so --expand walks them.
+    linked: list[str] = []
+    bwe = user.get("biography_with_entities") or {}
+    entities = (
+        bwe.get("entities")
+        or ((bwe.get("biography_with_entities") or {}).get("entities") if isinstance(bwe, dict) else None)
+        or []
+    )
+    if isinstance(entities, list):
+        for ent in entities:
+            if not isinstance(ent, dict):
+                continue
+            # Tagged @username entries shape: {"user": {"username": "..."}, "hashtag": null}
+            user_node = ent.get("user")
+            if isinstance(user_node, dict):
+                tagged = user_node.get("username")
+                if isinstance(tagged, str) and tagged and tagged.lower() != username.lower():
+                    linked.append(f"https://instagram.com/{tagged}")
+            # Inline URL entries shape: {"url": "https://..."}
+            url = ent.get("url")
+            if isinstance(url, str) and url.strip():
+                linked.append(url.strip())
+    if linked:
+        # Deduplicate while preserving order.
+        seen: set[str] = set()
+        unique = []
+        for u in linked:
+            k = u.lower()
+            if k in seen:
+                continue
+            seen.add(k)
+            unique.append(u)
+        info["linked_accounts"] = unique
+
+    # Business / category metadata.
+    if user.get("business_email"):
+        info["email"] = user["business_email"]
+    if user.get("category_name"):
+        info["category"] = user["category_name"]
+    if user.get("fbid_v2"):
+        info["fb_id"] = str(user["fbid_v2"])
+
     return info
 
 
@@ -453,50 +581,262 @@ _YT_VERIFIED_RE = re.compile(
 )
 
 
+def _yt_extract_initial_data(body: str) -> Optional[dict]:
+    """Pull the ytInitialData JSON blob out of a YouTube channel page.
+
+    YouTube embeds the structured channel metadata in a `<script>`
+    block like `var ytInitialData = {...};`. This is the source of
+    truth for description, links, location, view counts, etc. — the
+    `og:*` meta tags carry stripped-down SEO-friendly copies that lose
+    the actual data we want.
+
+    Returns the parsed dict or None on any failure (extraction always
+    falls back to og:* tags downstream).
+    """
+    # Real YouTube responses ship the JSON on one giant line, but
+    # pretty-printed fixtures and dev tools contain newlines. DOTALL
+    # so `.+?` spans them.
+    m = re.search(
+        r"var ytInitialData = (\{.+?\});</script>", body, re.DOTALL,
+    )
+    if not m:
+        m = re.search(
+            r"ytInitialData\s*=\s*(\{.+?\});\s*</script>", body, re.DOTALL,
+        )
+    if not m:
+        return None
+    try:
+        return json.loads(m.group(1))
+    except (ValueError, json.JSONDecodeError):
+        return None
+
+
+def _yt_find_first(obj, key: str):
+    """Depth-first search for the first occurrence of `key` in a nested
+    dict/list structure. ytInitialData is deeply nested under shifting
+    panel/section paths (YouTube reshapes the tree every few months),
+    so locating by key is more robust than hard-coding the path."""
+    if isinstance(obj, dict):
+        if key in obj:
+            return obj[key]
+        for v in obj.values():
+            r = _yt_find_first(v, key)
+            if r is not None:
+                return r
+    elif isinstance(obj, list):
+        for item in obj:
+            r = _yt_find_first(item, key)
+            if r is not None:
+                return r
+    return None
+
+
+# Patterns that pull the numeric portion out of YouTube's localised
+# stat labels. The blob comes back with text like "18 subscribers",
+# "1.2M abonnees", "7.669 weergaven", "14 video's" — all start with a
+# numeric run (commas/dots/spaces tolerated). We grab the first run
+# and parse via _yt_parse_count below — NOT _parse_human_number,
+# because European locales use `.` as a thousands separator and
+# _parse_human_number treats it as a decimal point.
+_YT_LEADING_NUMBER_RE = re.compile(r"^([\d.,]+(?:\s*[KMB])?)", re.IGNORECASE)
+
+
+def _yt_parse_count(raw: str) -> Optional[int]:
+    """Parse a count string from a YouTube localised stat label.
+
+    Examples that must work:
+      '18'           -> 18
+      '7.669'        -> 7669       (Dutch thousands separator)
+      '7,669'        -> 7669       (English thousands separator)
+      '1.2K'         -> 1200       (decimal + K-suffix)
+      '1,2 mln.'     -> 1_200_000  (Dutch million)
+      '14'           -> 14
+
+    Strategy: a K/M/B suffix means treat the rest as a float (decimal
+    point). No suffix means treat both `.` and `,` as thousands
+    separators (strip them) IF the number has 4+ digits or multiple
+    separators. Single dot/comma with ≤3 trailing digits AND no
+    leading group of 1-3 = ambiguous; we fall back to int after
+    stripping separators (gives correct answer for whole numbers, only
+    wrong for the rare bare decimal like '1.5' which we never see in
+    YouTube counts anyway).
+    """
+    if not raw:
+        return None
+    s = raw.strip()
+    suffix_match = re.search(r"([KMB])\s*$", s, re.IGNORECASE)
+    if suffix_match:
+        unit = suffix_match.group(1).upper()
+        body = s[: suffix_match.start()].strip()
+        # With a suffix, the separator IS a decimal — same as before.
+        body = body.replace(",", ".")
+        try:
+            n = float(body)
+        except ValueError:
+            return None
+        mult = {"K": 1_000, "M": 1_000_000, "B": 1_000_000_000}[unit]
+        return int(n * mult)
+    # No suffix — all separators are thousands. Strip them.
+    digits = re.sub(r"[.,\s]", "", s)
+    if not digits.isdigit():
+        return None
+    return int(digits)
+
+
+def _yt_text(value) -> str:
+    """Extract a plain string from a YouTube text node, which is either
+    a bare string, `{"content": "..."}`, or `{"simpleText": "..."}`."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        for k in ("content", "simpleText"):
+            if k in value and isinstance(value[k], str):
+                return value[k]
+    return ""
+
+
 def extract_youtube(body: str, username: str) -> dict:
     info = extract_meta(body, f"https://www.youtube.com/@{username}")
 
-    # --- Subscriber count ---
-    # Prefer the plain-string form; it appears in the About section and always
-    # reflects the full channel count. The structured form appears earlier in
-    # video-card contexts and may belong to a sub-channel with a far lower count.
-    subs_raw: Optional[str] = None
-    m = _YT_SUBS_PLAIN_RE.search(body)
-    if m:
-        subs_raw = m.group(1)
-    else:
-        m = _YT_SUBS_STRUCT_RE.search(body)
+    data = _yt_extract_initial_data(body)
+    if data:
+        # `aboutChannelViewModel` is YouTube's first-class About-page
+        # data block. It carries the real description (bio), the
+        # structured Links panel, location, join date, subs, views.
+        about = _yt_find_first(data, "aboutChannelViewModel") or {}
+        meta = _yt_find_first(data, "channelMetadataRenderer") or {}
+
+        # Real description (the field labelled "Description" on the
+        # about page). Always overrides whatever og:description gave us
+        # — og:description is SEO filler, not the actual bio.
+        desc = about.get("description") or meta.get("description")
+        if isinstance(desc, str) and desc.strip():
+            info["bio"] = desc.strip()
+
+        # Display name from the channel metadata (`title`). Falls back
+        # to og:title if unavailable.
+        title = meta.get("title")
+        if isinstance(title, str) and title.strip():
+            info["display_name"] = title.strip()
+
+        # Country. YouTube localises this string (e.g. "Frankrijk"
+        # instead of "France") — surface as-is; identity.py's
+        # normalisation step handles the translation downstream.
+        country = about.get("country")
+        if isinstance(country, str) and country.strip():
+            info["location"] = country.strip()
+
+        # Structured Links panel. Each entry is
+        # `{channelExternalLinkViewModel: {title: {content: 'instagram'},
+        #                                   link: {content: 'instagram.com/hama_ffs', ...}}}`.
+        # We harvest the link URLs into `linked_accounts` so --expand can
+        # walk them.
+        links_raw = about.get("links")
+        if isinstance(links_raw, list):
+            urls: list[str] = []
+            for entry in links_raw:
+                if not isinstance(entry, dict):
+                    continue
+                lvm = entry.get("channelExternalLinkViewModel") or {}
+                link_node = lvm.get("link") or {}
+                u = _yt_text(link_node)
+                if u and u not in urls:
+                    # Ensure URLs have a scheme — YouTube ships
+                    # "instagram.com/hama_ffs" without https:// half
+                    # the time.
+                    if not u.startswith(("http://", "https://")):
+                        u = "https://" + u
+                    urls.append(u)
+            if urls:
+                info["linked_accounts"] = urls
+
+        # Stats — strip the leading number from each localised text
+        # field. Works regardless of UI language because the digits and
+        # K/M/B suffixes are universal. Uses _yt_parse_count which
+        # handles European thousands separators correctly.
+        for key, dest in (
+            ("subscriberCountText", "followers"),
+            ("viewCountText", "views"),
+            ("videoCountText", "posts"),
+        ):
+            text = _yt_text(about.get(key))
+            if text:
+                lead = _YT_LEADING_NUMBER_RE.search(text)
+                if lead:
+                    n = _yt_parse_count(lead.group(1))
+                    if n is not None:
+                        info[dest] = n
+
+        # Joined date — best-effort, store raw text. Downstream
+        # `_format_joined` will parse English; non-English locales just
+        # render the raw text, which is still useful.
+        joined_text = _yt_text(about.get("joinedDateText"))
+        if joined_text:
+            # Strip the common leading phrase "Joined " / "Lid geworden op " /
+            # etc. — we want the date itself, not the verb.
+            joined = re.sub(
+                r"^(?:Joined|Lid geworden op|Beigetreten am|"
+                r"S'est inscrit le|Se unió el|Inscrito em|Iscritto il)\s+",
+                "", joined_text, flags=re.IGNORECASE,
+            ).strip()
+            info["joined"] = joined or joined_text
+
+        # High-resolution avatar URL — overrides og:image which often
+        # serves a 200px crop.
+        avatar = meta.get("avatar") or {}
+        thumbs = avatar.get("thumbnails")
+        if isinstance(thumbs, list) and thumbs:
+            best = max(
+                thumbs,
+                key=lambda t: int(t.get("width") or 0) if isinstance(t, dict) else 0,
+            )
+            if isinstance(best, dict) and best.get("url"):
+                info["photo"] = best["url"]
+
+    # --- Legacy regex fallbacks for fields we couldn't pull from JSON ---
+    # These still fire when ytInitialData is missing or malformed (e.g.
+    # YouTube returns a different shell to certain UAs).
+    if "followers" not in info:
+        subs_raw: Optional[str] = None
+        m = _YT_SUBS_PLAIN_RE.search(body)
         if m:
             subs_raw = m.group(1)
-    if subs_raw:
-        clean = re.sub(r"\s*subscribers?\s*", "", subs_raw, flags=re.I).strip()
-        n = _parse_human_number(clean)
-        if n is not None:
-            info["followers"] = n  # subs are followers
+        else:
+            m = _YT_SUBS_STRUCT_RE.search(body)
+            if m:
+                subs_raw = m.group(1)
+        if subs_raw:
+            clean = re.sub(r"\s*subscribers?\s*", "", subs_raw, flags=re.I).strip()
+            n = _parse_human_number(clean)
+            if n is not None:
+                info["followers"] = n
+    if "posts" not in info:
+        m = _YT_VIDEOS_RE.search(body)
+        if m:
+            n = _parse_human_number(m.group(1))
+            if n is not None:
+                info["posts"] = n
+    if "views" not in info:
+        m = _YT_VIEWS_RE.search(body)
+        if m:
+            info["views"] = _parse_human_number(m.group(1))
+    if "location" not in info:
+        m = _YT_COUNTRY_RE.search(body)
+        if m:
+            info["location"] = m.group(1)
+    if "joined" not in info:
+        m = _YT_JOINED_RE.search(body)
+        if m:
+            info["joined"] = m.group(1).strip()
+    if "bio" not in info:
+        m = _YT_DESC_RE.search(body)
+        if m and m.group(1):
+            try:
+                info["bio"] = json.loads(f'"{m.group(1)}"')
+            except Exception:
+                info["bio"] = m.group(1)
 
-    # --- Video count, views, country, joined date, description ---
-    m = _YT_VIDEOS_RE.search(body)
-    if m:
-        n = _parse_human_number(m.group(1))
-        if n is not None:
-            info["posts"] = n
-    m = _YT_VIEWS_RE.search(body)
-    if m:
-        info["views"] = _parse_human_number(m.group(1))
-    m = _YT_COUNTRY_RE.search(body)
-    if m:
-        info["location"] = m.group(1)
-    m = _YT_JOINED_RE.search(body)
-    if m:
-        info["joined"] = m.group(1).strip()
-    m = _YT_DESC_RE.search(body)
-    if m and m.group(1):
-        try:
-            info["bio"] = json.loads(f'"{m.group(1)}"')
-        except Exception:
-            info["bio"] = m.group(1)
-
-    # --- Verified badge ---
+    # Verified badge — pure HTML signal, no JSON equivalent we trust.
     if _YT_VERIFIED_RE.search(body):
         info["verified"] = True
 
@@ -604,19 +944,117 @@ _THREADS_STATS_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Threads embeds its profile JSON in the SSR'd page. Capturing the
+# fields we care about by regex is more robust than parsing the whole
+# multi-MB blob — the keys we want are all on one line with their values.
+_THREADS_BIO_RE = re.compile(r'"biography":"((?:\\\\.|[^"\\\\])*)"')
+_THREADS_FULLNAME_RE = re.compile(r'"full_name":"((?:\\\\.|[^"\\\\])*)"')
+_THREADS_FOLLOWER_RE = re.compile(r'"follower_count":(\d+)')
+_THREADS_PROFILE_PIC_RE = re.compile(r'"profile_pic_url":"([^"]+)"')
+_THREADS_VERIFIED_RE = re.compile(r'"is_verified":(true|false)')
+_THREADS_PRIVATE_RE = re.compile(r'"is_private":(true|false)')
+_THREADS_USER_ID_RE = re.compile(r'"user_id":"(\d+)"')
+# Mention fragments in the bio carry tagged @-handles. Each fragment is
+# a small dict; we want the linked_in_app_url to resolve to a Threads
+# profile, OR the mention_fragment.username field.
+_THREADS_MENTION_RE = re.compile(
+    r'"mention_fragment":\{[^}]*"username":"([A-Za-z0-9_.]+)"'
+)
+# `bio_links` is an array of dicts: {"url": "...", "display_url": "..."}.
+# We pull the first URL per object.
+_THREADS_BIOLINK_RE = re.compile(r'"url":"((?:https?:[^"\\\\]+|[^"\\\\]+))"', re.IGNORECASE)
+_THREADS_BIOLINKS_BLOCK_RE = re.compile(
+    r'"bio_links":\[(.*?)\]', re.DOTALL,
+)
+
+
+def _threads_decode(raw: str) -> str:
+    """Decode a JSON-string escape sequence back to a normal Python str."""
+    try:
+        return json.loads(f'"{raw}"')
+    except Exception:
+        return raw
+
 
 def extract_threads(body: str, username: str) -> dict:
     info = extract_meta(body, f"https://www.threads.com/@{username}")
-    # og:description carries the public stats.
-    desc = info.get("bio") or ""
-    m = _THREADS_STATS_RE.search(desc)
+
+    # --- SSR JSON parsing (new path) -----------------------------------
+    # Threads ships a structured profile blob in its SSR HTML similar
+    # to Instagram's web_profile_info shape. Parse the high-signal
+    # fields directly out of the page text — single-shot regex per
+    # field is robust to the surrounding JSON structure changing.
+
+    m = _THREADS_BIO_RE.search(body)
     if m:
-        info["followers"] = _parse_human_number(m.group(1))
-        info["posts"] = _parse_human_number(m.group(2))
-        # The "real" bio appears after the stats line on Threads' meta tags.
-        tail = desc.split("•", 1)[-1] if "•" in desc else ""
-        if tail and "See" in tail:
-            info["bio"] = re.split(r"\s+See ", tail, 1)[0].strip()
+        bio = _threads_decode(m.group(1))
+        if bio.strip():
+            info["bio"] = bio.strip()
+
+    m = _THREADS_FULLNAME_RE.search(body)
+    if m:
+        name = _threads_decode(m.group(1)).strip()
+        if name:
+            info["display_name"] = name
+
+    m = _THREADS_FOLLOWER_RE.search(body)
+    if m:
+        info["followers"] = int(m.group(1))
+
+    m = _THREADS_PROFILE_PIC_RE.search(body)
+    if m:
+        info["photo"] = _threads_decode(m.group(1))
+
+    m = _THREADS_VERIFIED_RE.search(body)
+    if m:
+        info["verified"] = m.group(1) == "true"
+
+    m = _THREADS_PRIVATE_RE.search(body)
+    if m:
+        info["private"] = m.group(1) == "true"
+
+    m = _THREADS_USER_ID_RE.search(body)
+    if m:
+        info["user_id"] = m.group(1)
+
+    # Bio mention entities — @-tags inside the bio text. Each one is a
+    # Threads/Instagram handle of another account the user references.
+    mentions = list({m_.group(1) for m_ in _THREADS_MENTION_RE.finditer(body)})
+    mentions = [
+        m_ for m_ in mentions if m_.lower() != username.lower()
+    ]
+
+    # Bio links — Threads' first-class "links in bio" panel.
+    biolinks: list[str] = []
+    block = _THREADS_BIOLINKS_BLOCK_RE.search(body)
+    if block:
+        for u_match in _THREADS_BIOLINK_RE.finditer(block.group(1)):
+            u = _threads_decode(u_match.group(1)).strip()
+            if u:
+                biolinks.append(u)
+
+    linked: list[str] = []
+    for m_ in mentions:
+        linked.append(f"https://www.threads.com/@{m_}")
+    for u in biolinks:
+        if u not in linked:
+            linked.append(u)
+    if linked:
+        info["linked_accounts"] = linked
+
+    # --- Legacy og:description fallback --------------------------------
+    if "followers" not in info or not info.get("bio"):
+        desc = info.get("bio") or ""
+        m = _THREADS_STATS_RE.search(desc)
+        if m:
+            if "followers" not in info:
+                info["followers"] = _parse_human_number(m.group(1))
+            if "posts" not in info:
+                info["posts"] = _parse_human_number(m.group(2))
+            tail = desc.split("•", 1)[-1] if "•" in desc else ""
+            if tail and "See" in tail:
+                info["bio"] = re.split(r"\s+See ", tail, 1)[0].strip()
+
     # Strip the title decoration "@user • Threads, Say more"
     title = info.get("display_name") or ""
     m = re.match(r"@(\S+)\s*[•·]\s*Threads", title)
@@ -673,7 +1111,7 @@ def extract_facebook(body: str, username: str) -> dict:
     bio = info.get("bio") or ""
     if re.search(r"(?:is on Facebook|est sur Facebook|en Facebook|على فيسبوك)", bio):
         info.pop("bio", None)
-    # Display name: og:title is "Mohamed Mahemli" or "Mohamed Mahemli | Facebook".
+    # Display name: og:title is e.g. "Alex Stevens" or "Alex Stevens | Facebook".
     title = info.get("display_name") or ""
     title = re.sub(r"\s*\|\s*Facebook\s*$", "", title).strip()
     if title:
@@ -1382,6 +1820,53 @@ _PER_SITE = {
 }
 
 
+_BIO_URL_RE = re.compile(
+    # Capture http(s) URLs, plus bare `platform.com/...` strings that
+    # are recognisable platform domains (most users on TikTok / Twitter
+    # / Threads write "instagram.com/foo" without the scheme).
+    r"(?:https?://)?(?:www\.)?"
+    r"(?:twitter\.com|x\.com|instagram\.com|tiktok\.com|threads\.net|"
+    r"threads\.com|youtube\.com|youtu\.be|twitch\.tv|github\.com|"
+    r"facebook\.com|fb\.com|reddit\.com|linkedin\.com|"
+    r"linktr\.ee|beacons\.ai|bio\.link|carrd\.co|t\.me|telegram\.me|"
+    r"medium\.com|dev\.to|behance\.net|dribbble\.com|"
+    r"soundcloud\.com|bandcamp\.com|mixcloud\.com|"
+    r"keybase\.io|mastodon\.social|bsky\.app|patreon\.com|"
+    r"ko-fi\.com|buymeacoffee\.com)"
+    r"/[A-Za-z0-9_./\-@]+",
+    re.IGNORECASE,
+)
+
+
+def _harvest_bio_links(text: str) -> list[str]:
+    """Pull recognisable platform URLs out of free-form bio text.
+
+    Catches the long tail of accounts where users write "ig: @foo" or
+    "youtube.com/@bar" directly in their bio — the per-site extractors
+    don't look for these because each platform structures bios
+    differently. Always normalises to `https://...` so the cross-link
+    expander can parse them with `expand._extract_one`.
+
+    Returns a deduplicated list preserving order.
+    """
+    if not text:
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for m in _BIO_URL_RE.finditer(text):
+        u = m.group(0)
+        # Strip trailing punctuation that the regex sometimes grabs.
+        u = u.rstrip(".,;:!?)]")
+        if not u.startswith(("http://", "https://")):
+            u = "https://" + u
+        key = u.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(u)
+    return out
+
+
 def extract_profile(site_name: str, body: str, base_url: str, username: str) -> dict:
     """Return what we can pull from `body` about the user.
 
@@ -1389,13 +1874,30 @@ def extract_profile(site_name: str, body: str, base_url: str, username: str) -> 
     typically have layered metadata (a misleading SSR shell, embedded JSON)
     where blindly mixing in OpenGraph would produce wrong fields.
     Everything else uses the generic OpenGraph reader.
+
+    Generic post-pass: regardless of which extractor ran, scan the bio
+    text for recognisable platform URLs and merge them into
+    `linked_accounts`. This catches the long tail of platforms where
+    the user hand-writes their other handles in the bio (Twitter,
+    Threads, TikTok, etc.) — the per-site extractors only see the
+    structured Links/sameAs fields, not free-form bio text.
     """
     site_fn = _PER_SITE.get(site_name)
     info = site_fn(body, username) if site_fn else extract_meta(body, base_url)
-    # Tag the bio language so the report can show a language chip and
-    # the cluster-level geo inference has a per-account hint to weigh.
+    # Generic bio-URL harvest — runs after every extractor.
     bio = info.get("bio")
     if isinstance(bio, str) and bio.strip():
+        harvested = _harvest_bio_links(bio)
+        if harvested:
+            existing = info.get("linked_accounts") or []
+            if isinstance(existing, list):
+                merged = list(existing)
+                for u in harvested:
+                    if u not in merged:
+                        merged.append(u)
+                info["linked_accounts"] = merged
+        # Tag the bio language so the report can show a language chip
+        # and the cluster-level geo inference has a per-account hint.
         lang = detect_lang(bio)
         if lang:
             info["language"] = lang

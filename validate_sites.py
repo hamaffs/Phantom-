@@ -19,15 +19,25 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
 VALID_CATEGORIES = {"dev", "social", "gaming", "media", "forum", "other"}
 VALID_METHODS = {"status", "message"}
 VALID_HTTP_METHODS = {"GET", "POST"}
-VALID_PROTECTION_FLAGS = {"tls_fingerprint"}
+VALID_PROTECTION_FLAGS = {"tls_fingerprint", "js_challenge"}
+VALID_CONTENT_TYPES = {
+    "photo", "text", "code", "audio", "video", "links", "mixed",
+}
 
 REQUIRED_FIELDS = ("name", "category", "url", "method", "reliability")
+
+# ISO 3166-1 alpha-2 — we don't pin to a closed set since new TLDs and
+# platforms appear, but we do enforce the shape. "global" is a special
+# value meaning "no geographic affinity".
+_ISO_COUNTRY_RE = re.compile(r"^[a-z]{2}$")
+_ISO_LANGUAGE_RE = re.compile(r"^[a-z]{2}(-[a-z]{2})?$")
 
 
 def validate(sites_path: Path) -> tuple[list[str], list[str]]:
@@ -119,7 +129,11 @@ def validate(sites_path: Path) -> tuple[list[str], list[str]]:
                     errors.append(
                         f"{prefix} {field_name}[{j}] not an integer: {item!r}"
                     )
-                elif not (100 <= item < 600):
+                elif not (100 <= item < 1000):
+                    # Some platforms ship non-standard 3-digit codes
+                    # (LinkedIn's 999 = "auth required" is the famous one,
+                    # Cloudflare uses 521/526 too). We warn only when the
+                    # number is outside the 3-digit range entirely.
                     warnings.append(
                         f"{prefix} {field_name}[{j}] {item} is not a typical "
                         f"HTTP code"
@@ -196,6 +210,42 @@ def validate(sites_path: Path) -> tuple[list[str], list[str]]:
                 errors.append(f"{prefix} profile_url must be a string")
             elif "{username}" not in purl:
                 errors.append(f"{prefix} profile_url missing {{username}} placeholder")
+
+        # country — ISO 3166-1 alpha-2 lowercase, or "global"
+        country = entry.get("country")
+        if country is not None:
+            if not isinstance(country, str):
+                errors.append(f"{prefix} country must be a string")
+            elif country != "global" and not _ISO_COUNTRY_RE.match(country):
+                errors.append(
+                    f"{prefix} country {country!r} — expected ISO 3166-1 "
+                    f"alpha-2 lowercase (e.g. 'us', 'fr') or 'global'"
+                )
+
+        # language — ISO 639-1 (optionally with a region tag), or "global"
+        language = entry.get("language")
+        if language is not None:
+            if not isinstance(language, str):
+                errors.append(f"{prefix} language must be a string")
+            elif language != "global" and not _ISO_LANGUAGE_RE.match(language):
+                errors.append(
+                    f"{prefix} language {language!r} — expected ISO 639-1 "
+                    f"lowercase (e.g. 'en', 'fr', 'zh-cn') or 'global'"
+                )
+
+        # content_type — closed set
+        ct = entry.get("content_type")
+        if ct is not None:
+            if ct not in VALID_CONTENT_TYPES:
+                errors.append(
+                    f"{prefix} content_type {ct!r} — must be one of "
+                    f"{sorted(VALID_CONTENT_TYPES)}"
+                )
+
+        # disabled — boolean flag
+        dis = entry.get("disabled")
+        if dis is not None and not isinstance(dis, bool):
+            errors.append(f"{prefix} disabled must be a boolean")
 
     return errors, warnings
 

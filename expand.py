@@ -115,43 +115,57 @@ def _extract_one(url: str) -> Optional[str]:
     return None
 
 
-def _candidate_urls(profile: dict) -> list[str]:
-    """Pull every URL that might point at another social profile, deduped
-    while preserving order. Strings only; nested dicts (linktree links)
-    are walked one level deep."""
+# Source-of-handle confidence weights. Each tells us how much we should
+# trust that a discovered handle actually belongs to the same person. The
+# integer is added to the discovered account's starting confidence score
+# when it's eventually scanned.
+SOURCE_KEYBASE_PROOF = "keybase_proof"   # cryptographic, strongest
+SOURCE_LINKED_ACCOUNT = "linked_account" # JSON-LD sameAs (about.me, dev.to)
+SOURCE_GITHUB_HANDLE = "github_handle"   # GitHub's explicit x_handle field
+SOURCE_WEBSITE = "website"               # the user's own website field
+SOURCE_BIO_LINK = "bio_link"             # Linktree / Beacons curated link
+
+SOURCE_WEIGHTS: dict[str, int] = {
+    SOURCE_KEYBASE_PROOF: 30,
+    SOURCE_GITHUB_HANDLE: 20,
+    SOURCE_LINKED_ACCOUNT: 15,
+    SOURCE_WEBSITE: 10,
+    SOURCE_BIO_LINK: 5,
+}
+
+
+def _candidate_urls(profile: dict) -> list[tuple[str, str]]:
+    """Pull every URL that might point at another social profile, paired
+    with the source kind it came from. Stable order, deduplicated by URL
+    (first source wins).
+    """
     if not profile:
         return []
-    out: list[str] = []
+    out: list[tuple[str, str]] = []
     seen: set[str] = set()
 
-    def push(value):
+    def push(value, source: str) -> None:
         if isinstance(value, str) and value:
             v = value.strip()
             if v and v not in seen:
                 seen.add(v)
-                out.append(v)
+                out.append((v, source))
         elif isinstance(value, dict):
-            # link entries: {"title": ..., "url": ...}
             for k in ("url", "link", "href"):
-                push(value.get(k))
+                push(value.get(k), source)
         elif isinstance(value, list):
             for item in value:
-                push(item)
+                push(item, source)
 
-    for key in (
-        "linked_accounts",
-        "links",
-        "proofs",
-        "website",
-    ):
-        push(profile.get(key))
-
-    # GitHub's free-form "blog" field is the user's own pointer.
-    push(profile.get("blog"))
-    # GitHub also exposes a Twitter handle directly (not a URL).
+    # Each input field carries its own source-kind weighting.
+    push(profile.get("proofs"), SOURCE_KEYBASE_PROOF)
+    push(profile.get("linked_accounts"), SOURCE_LINKED_ACCOUNT)
+    push(profile.get("links"), SOURCE_BIO_LINK)
+    push(profile.get("website"), SOURCE_WEBSITE)
+    push(profile.get("blog"), SOURCE_WEBSITE)
     gh_x = profile.get("x_handle") or profile.get("twitter")
     if isinstance(gh_x, str) and gh_x.strip():
-        push(f"https://x.com/{gh_x.strip().lstrip('@')}")
+        push(f"https://x.com/{gh_x.strip().lstrip('@')}", SOURCE_GITHUB_HANDLE)
 
     return out
 
@@ -159,22 +173,32 @@ def _candidate_urls(profile: dict) -> list[str]:
 def discover_new_handles(
     found: Iterable[CheckResult],
     already_tested: set[str],
-) -> list[str]:
-    """Return a list of new handles to scan, drawn from the linked-account
-    data on every FOUND profile. Handles in `already_tested` are filtered
-    out (case-insensitive). Order is stable for reproducibility.
+) -> list[tuple[str, str]]:
+    """Return [(handle, source_kind), ...] — fresh handles to scan, paired
+    with the source that surfaced them so the caller can boost confidence
+    on a strong-source discovery. Order is stable. When the same handle is
+    discovered via multiple sources, the strongest source wins (rather
+    than the first).
     """
     tested_lower = {h.lower() for h in already_tested}
-    out: list[str] = []
-    seen: set[str] = set()
+    best: dict[str, tuple[str, str]] = {}  # lower(handle) -> (handle, source)
+    order: list[str] = []
     for r in found:
-        for url in _candidate_urls(r.profile or {}):
+        for url, source in _candidate_urls(r.profile or {}):
             handle = _extract_one(url)
             if not handle:
                 continue
             key = handle.lower()
-            if key in tested_lower or key in seen:
+            if key in tested_lower:
                 continue
-            seen.add(key)
-            out.append(handle)
-    return out
+            prev = best.get(key)
+            if prev is None:
+                best[key] = (handle, source)
+                order.append(key)
+            else:
+                # Keep the strongest source if we see the same handle from
+                # multiple places (e.g. someone has a Keybase proof AND a
+                # Linktree link to the same Twitter — Keybase wins).
+                if SOURCE_WEIGHTS.get(source, 0) > SOURCE_WEIGHTS.get(prev[1], 0):
+                    best[key] = (handle, source)
+    return [best[k] for k in order]

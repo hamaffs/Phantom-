@@ -47,6 +47,8 @@ class Phantom:
         cache: Optional[ResponseCache] = None,
         proxy: Optional[str] = None,
         per_host_concurrency: int = 3,
+        js_render: bool = False,
+        js_concurrency: int = 3,
     ) -> None:
         self.sites = sites
         self.concurrency = concurrency
@@ -68,6 +70,15 @@ class Phantom:
         # letting unrelated hosts run wide-open.
         self.per_host_concurrency = per_host_concurrency
         self._host_sems: dict[str, asyncio.Semaphore] = {}
+        # JS-render backend (Playwright). When `js_render=True`, every
+        # site routes through headless Chromium — useful for blanket
+        # testing or networks that block other backends. Otherwise only
+        # sites flagged `protection: ["js_challenge"]` use it. The
+        # fetcher is lazy-instantiated so phantom doesn't pay browser
+        # startup unless a JS-route site is actually scanned.
+        self.js_render_all = js_render
+        self.js_concurrency = js_concurrency
+        self._js_fetcher = None  # PlaywrightFetcher | None
 
     def _host_sem(self, url: str) -> asyncio.Semaphore:
         """Return a (lazily created) per-host semaphore for `url`."""
@@ -272,6 +283,87 @@ class Phantom:
             self.cache.set(method_name, url, body_payload, _result_to_cache(result))
         return result
 
+    # ------- Playwright path -----------------------------------------------
+
+    async def _playwright_request(self, site: Site, username: str) -> CheckResult:
+        """Single Playwright attempt — no retry, no cache."""
+        url = site.url_for(username)
+        display_url = site.display_url_for(username)
+        start = time.monotonic()
+        # Reuse the per-site User-Agent if it set one — site authors
+        # sometimes pin a UA to bypass UA-based gating.
+        ua = None
+        extra_headers: dict = {}
+        for k, v in (site.headers or {}).items():
+            if k.lower() == "user-agent":
+                ua = v
+            else:
+                extra_headers[k] = v
+        try:
+            assert self._js_fetcher is not None
+            status, body, final = await self._js_fetcher.fetch(
+                url, headers=extra_headers or None, user_agent=ua,
+            )
+            if len(body) > self.max_body:
+                body = body[: self.max_body]
+            exists, reason = evaluate(site, status, body, username)
+            profile = (
+                extract_profile(site.name, body, final, username)
+                if exists is True else {}
+            )
+            return CheckResult(
+                site=site.name, category=site.category, url=display_url, exists=exists,
+                reliability=site.reliability, status=status,
+                elapsed_ms=int((time.monotonic() - start) * 1000),
+                reason=reason,
+                final_url=final if final != url else None,
+                backend="playwright", profile=profile, variant=username,
+            )
+        except asyncio.TimeoutError:
+            return CheckResult(
+                site=site.name, category=site.category, url=display_url, exists=None,
+                reliability=site.reliability, error="timeout", reason="timeout",
+                elapsed_ms=int((time.monotonic() - start) * 1000),
+                backend="playwright", variant=username,
+            )
+        except Exception as e:
+            return CheckResult(
+                site=site.name, category=site.category, url=display_url, exists=None,
+                reliability=site.reliability, error=type(e).__name__,
+                reason=type(e).__name__,
+                elapsed_ms=int((time.monotonic() - start) * 1000),
+                backend="playwright", variant=username,
+            )
+
+    async def _check_playwright(
+        self,
+        site: Site,
+        username: str,
+        sem: asyncio.Semaphore,
+    ) -> CheckResult:
+        """Playwright backend with cache + retry."""
+        url = site.url_for(username)
+        body_payload = site.body_for(username)
+        method_name = site.request_method.upper()
+
+        cached = self.cache.get(method_name, url, body_payload)
+        if cached:
+            return _result_from_cache(site, username, cached, "playwright")
+
+        host_sem = self._host_sem(url)
+        async with sem, host_sem:
+            result = await self._playwright_request(site, username)
+            if self.retry_on_transient and _is_transient(result):
+                await asyncio.sleep(self.retry_delay)
+                retry = await self._playwright_request(site, username)
+                if retry.exists is True or retry.exists is False:
+                    retry.reason = (retry.reason or "") + "+retry"
+                    result = retry
+
+        if not _is_transient(result) and result.exists is not None:
+            self.cache.set(method_name, url, body_payload, _result_to_cache(result))
+        return result
+
     # ------- driver --------------------------------------------------------
 
     async def run_many(self, variants: list[str]) -> list[tuple[str, list[CheckResult]]]:
@@ -284,12 +376,27 @@ class Phantom:
         site) pair behind one semaphore, so the queue stays full and any
         one slow site doesn't block the next variant from starting.
         """
-        if self.impersonate:
-            curl_sites = [s for s in self.sites if s.needs_impersonation]
-            aio_sites = [s for s in self.sites if not s.needs_impersonation]
+        # Three-way routing:
+        #   - js-render sites (or `--js-render` forcing every site through it)
+        #     → Playwright
+        #   - tls-fingerprint sites with curl_cffi available → curl
+        #   - everything else → aiohttp
+        # Routing is done up front so the per-backend semaphores can be
+        # sized correctly. JS routing wins over TLS routing when both
+        # flags are set on a site.
+        if self.js_render_all:
+            js_sites = list(self.sites)
+            curl_sites: list[Site] = []
+            aio_sites: list[Site] = []
         else:
-            curl_sites = []
-            aio_sites = list(self.sites)
+            js_sites = [s for s in self.sites if s.needs_js_render]
+            remaining = [s for s in self.sites if not s.needs_js_render]
+            if self.impersonate:
+                curl_sites = [s for s in remaining if s.needs_impersonation]
+                aio_sites = [s for s in remaining if not s.needs_impersonation]
+            else:
+                curl_sites = []
+                aio_sites = list(remaining)
 
         # Bigger semaphore for multi-variant runs — most of the work is
         # network-bound and per-host already throttled by TCPConnector,
@@ -307,6 +414,16 @@ class Phantom:
 
         aio_session_cm = ClientSession(connector=connector, timeout=timeout)
         curl_session_cm = CurlSession(impersonate="chrome") if curl_sites else None
+
+        # Lazy-init the Playwright fetcher only if any site actually
+        # needs it — pays the ~1s browser-startup cost only on demand.
+        if js_sites:
+            from playwright_backend import PlaywrightFetcher
+            self._js_fetcher = PlaywrightFetcher(
+                concurrency=self.js_concurrency,
+                timeout_seconds=self.timeout + 10,
+            )
+            await self._js_fetcher.start()
 
         # Bucket so we can rebuild per-variant ordering at the end.
         all_tasks: list[tuple[str, asyncio.Task]] = []
@@ -328,6 +445,11 @@ class Phantom:
                         self._check_curl(curl_session, s, v, sem)
                     )
                     all_tasks.append((v, t))
+                for s in js_sites:
+                    t = asyncio.create_task(
+                        self._check_playwright(s, v, sem)
+                    )
+                    all_tasks.append((v, t))
 
             # Drain completions as they come in so we can periodically
             # flush the cache to disk. If the user hits Ctrl-C mid-scan,
@@ -344,6 +466,9 @@ class Phantom:
             await aio_session_cm.__aexit__(None, None, None)
             if curl_session_cm:
                 await curl_session_cm.__aexit__(None, None, None)
+            if self._js_fetcher is not None:
+                await self._js_fetcher.close()
+                self._js_fetcher = None
 
         grouped: dict[str, list[CheckResult]] = {v: [] for v in variants}
         for v, t in all_tasks:
