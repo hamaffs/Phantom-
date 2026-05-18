@@ -305,11 +305,12 @@
   {
     "name": "Instagram",
     "category": "social",
-    "url": "https://i.instagram.com/api/v1/users/web_profile_info/?username={username}",
+    "url": "https://www.instagram.com/{username}/",
     "profile_url": "https://www.instagram.com/{username}/",
     "method": "message",
     "presence_text": [
-      "\"username\":\"{username}\""
+      "(&#064;{username})",
+      "(@{username})"
     ],
     "absence_text": [],
     "protection": [
@@ -323,7 +324,6 @@
       404
     ],
     "headers": {
-      "x-ig-app-id": "936619743392459",
       "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
       "Accept": "*/*"
     },
@@ -340,8 +340,7 @@
       "first_name"
     ],
     "absence_text": [
-      "This page isn't available",
-      "rsrcTags"
+      "This page isn't available"
     ],
     "headers": {
       "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36"
@@ -393,7 +392,8 @@
   {
     "name": "Reddit",
     "category": "social",
-    "url": "https://old.reddit.com/user/{username}",
+    "url": "https://api.reddit.com/user/{username}/about",
+    "profile_url": "https://www.reddit.com/user/{username}",
     "method": "message",
     "valid_status": [
       200
@@ -402,15 +402,15 @@
       404
     ],
     "presence_text": [
-      "overview for {username}",
-      "<title>overview for {username}"
+      "\"kind\": \"t2\""
     ],
-    "absence_text": [
-      "reddit.com: page not found"
-    ],
+    "absence_text": [],
     "protection": [
       "tls_fingerprint"
     ],
+    "headers": {
+      "User-Agent": "python:phantom-osint:v0.1 (by u/anonymous)"
+    },
     "reliability": 80,
     "country": "global",
     "language": "en",
@@ -1033,8 +1033,8 @@
     "url": "https://pastebin.com/u/{username}",
     "method": "message",
     "presence_text": [
-      "'s Pastebin",
-      "user-info"
+      "&#039;s Pastebin - Pastebin.com</title>",
+      "'s Pastebin - Pastebin.com</title>"
     ],
     "absence_text": [
       "Unknown User",
@@ -1911,30 +1911,6 @@
       ".com/{username}",
       "dle\">{username}",
       "en (@{username}"
-    ],
-    "country": "global",
-    "language": "en",
-    "content_type": "text"
-  },
-  {
-    "name": "Pillowfort",
-    "category": "social",
-    "url": "https://www.pillowfort.social/{username}",
-    "method": "status",
-    "reliability": 75,
-    "valid_status": [
-      200
-    ],
-    "invalid_status": [
-      404
-    ],
-    "presence_text": [
-      "0_pf-{username}",
-      "cial/{username}",
-      "d_pf-{username}"
-    ],
-    "absence_text": [
-      "does not exist"
     ],
     "country": "global",
     "language": "en",

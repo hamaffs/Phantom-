@@ -570,7 +570,8 @@ class PhantomTUI(App):
         #      light up with ~10 same-photo variants because their
         #      presence_text rules ("first_name", etc.) match for any
         #      URL — the score system correctly demotes them to
-        #      score=15 / IMPOSTOR but they still clutter the table.
+        #
+        score=15 / IMPOSTOR but they still clutter the table.
         impostor_rows: list[int] = []
         for r in flat_found:
             row_idx = row_for.get((r.site, r.variant or ""))

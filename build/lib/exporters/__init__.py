@@ -74,12 +74,15 @@ def export_report(
     dark: bool = False,
     dis_clusters=None,
     photo_bytes_map=None,
+    graph=None,
+    analysis=None,
 ) -> None:
     """Dispatch by extension. Defaults to JSON if the suffix is unrecognised."""
     suffix = path.suffix.lower()
     if suffix == ".html" or suffix == ".htm":
         export_html(grouped, raw, elapsed, path, overall, clusters, emails, deep_evidence, face_map,
-                    dark=dark, dis_clusters=dis_clusters, photo_bytes_map=photo_bytes_map)
+                    dark=dark, dis_clusters=dis_clusters, photo_bytes_map=photo_bytes_map,
+                    graph=graph, analysis=analysis)
     elif suffix == ".pdf":
         export_pdf(grouped, raw, elapsed, path, overall, clusters, emails, deep_evidence, face_map,
                    dark=dark, dis_clusters=dis_clusters, photo_bytes_map=photo_bytes_map)

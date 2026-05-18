@@ -15,7 +15,6 @@ from models import CheckResult, Site
 # ---------------------------------------------------------------------------
 # Response cache
 # ---------------------------------------------------------------------------
-
 _DEFAULT_CACHE_PATH = Path(
     os.environ.get("PHANTOM_CACHE_PATH")
     or Path.home() / ".cache" / "phantom" / "cache.json"
@@ -24,6 +23,10 @@ _CACHE_TTL = 3600                # 1 hour — default for one-off scans
 _RESUME_TTL = 7 * 24 * 3600      # 7 days — when --resume is set
 _CACHE_MAX_ENTRIES = 5000        # LRU-trim threshold
 _FLUSH_INTERVAL_SECONDS = 5      # how often the scanner asks us to save
+
+# Bump on any sites.json or scanner-request-shape change so users'
+# stale cached verdicts get invalidated instead of served.
+_CACHE_SCHEMA = "2026-05-17.1"
 
 
 class ResponseCache:
@@ -68,14 +71,23 @@ class ResponseCache:
             raw = json.loads(self.path.read_text(encoding="utf-8"))
         except Exception:
             return
+        # Schema check: if the cached file was written under an older
+        # site config, drop the whole thing rather than serve stale
+        # verdicts. Marks dirty so next flush re-writes with current schema.
+        if not isinstance(raw, dict) or raw.get("_schema") != _CACHE_SCHEMA:
+            self._dirty = True
+            return
+        entries = raw.get("entries") or {}
+        if not isinstance(entries, dict):
+            return
         now = time.time()
-        for k, v in raw.items():
+        for k, v in entries.items():
             if not isinstance(v, dict):
                 continue
             if now - v.get("ts", 0) > self.ttl_seconds:
                 continue
             # Skip pre-existing UNKNOWNs from older runs that didn't yet
-            # filter them out — caching uncertainty is the wrong policy.
+            # filter them out - caching uncertainty is the wrong policy.
             if v.get("exists") is None:
                 self._dirty = True
                 continue
@@ -111,8 +123,11 @@ class ResponseCache:
             self._mem = dict(keep)
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
+            # Write the schema version alongside entries so future
+            # Phantom upgrades can invalidate stale results.
+            payload = {"_schema": _CACHE_SCHEMA, "entries": self._mem}
             self.path.write_text(
-                json.dumps(self._mem, separators=(",", ":")),
+                json.dumps(payload, separators=(",", ":")),
                 encoding="utf-8",
             )
             self._dirty = False
@@ -134,10 +149,9 @@ class ResponseCache:
 # ---------------------------------------------------------------------------
 # Retry policy
 # ---------------------------------------------------------------------------
-
-# These are the answers we treat as "transient" — worth a single retry
+# These are the answers treat as "transient" - worth a single retry
 # before recording. The point is not to pretend flakes don't exist, just
-# to give the network one more chance before we lock in a verdict.
+# to give the network one more chance before lock in a verdict.
 _TRANSIENT_REASONS = {"timeout"}
 _TRANSIENT_ERROR_PREFIXES = (
     "ServerDisconnected",
@@ -182,6 +196,7 @@ def _result_to_cache(r: CheckResult) -> dict:
         "final_url": r.final_url,
         "backend": r.backend,
         "profile": r.profile or {},
+        "blocked_by": r.blocked_by,
     }
 
 
@@ -203,4 +218,5 @@ def _result_from_cache(
         backend=entry.get("backend") or backend,
         profile=entry.get("profile") or {},
         variant=username,
+        blocked_by=entry.get("blocked_by"),
     )

@@ -62,6 +62,7 @@ phantom = "checker:main"
 # loose data files (sites.json, canaries.json).
 include-package-data = true
 py-modules = [
+    "analyst",
     "checker",
     "cli",
     "models",
@@ -71,6 +72,7 @@ py-modules = [
     "dedupe",
     "emails",
     "expand",
+    "facebook_search",
     "hints",
     "identity",
     "enrich",
@@ -92,7 +94,7 @@ py-modules = [
     "tui_launcher",
     "tui_app",
 ]
-packages = ["exporters", "tests"]
+packages = ["exporters", "graph", "tests", "transforms"]
 
 # sites.json and canaries.json get installed to `share/phantom/` next
 # to the venv. cli.py looks for them there as a fallback.

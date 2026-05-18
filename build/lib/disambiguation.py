@@ -15,7 +15,7 @@ Signal weights
 --------------
 Strong (+5): photo perceptual match — same photo = same person, period.
 Strong (+3): cross-link in bio/website, both verified + same name,
-             separator-variant of same input root (hamaffs ↔ hama.ffs ↔ hama_ffs).
+             separator-variant of same input root (aliceuser ↔ alice.user ↔ alice_user).
 Medium (+2): fuzzy display-name match (>0.85), same location, same website, same follower tier.
 Weak   (+1): same exact variant, same bio language, account creation dates within 12 months.
 Score-proximity (+2): same variant, both score ≥ 25, gap ≤ 45 pts (data-sparse bridge).
@@ -46,7 +46,6 @@ SECONDARY_MIN_SCORE = 40       # cluster must contain an account this high for s
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
 _FOLLOWER_TIERS = [100, 1_000, 10_000, 100_000, 1_000_000]
 
 def _follower_tier(n) -> Optional[int]:
@@ -95,7 +94,7 @@ def _is_default_photo(url: str) -> bool:
 def _sep_root(s: str) -> str:
     """Strip separator characters (. _ -) and lowercase — the 'root' of a variant.
 
-    hamaffs, hama.ffs, hama_ffs, hama-ffs all return 'hamaffs'.
+    aliceuser, alice.user, alice_user, alice-user all return 'aliceuser'.
     pewdiepie123 returns 'pewdiepie123' (digits kept; it's not a sep variant).
     """
     return re.sub(r'[.\-_]', '', (s or '').lower())
@@ -113,7 +112,6 @@ def _parse_date(s: str) -> Optional[datetime]:
 # ---------------------------------------------------------------------------
 # Cluster dataclass
 # ---------------------------------------------------------------------------
-
 @dataclass
 class DisambiguationCluster:
     cluster_id: int
@@ -142,7 +140,6 @@ class DisambiguationCluster:
 # ---------------------------------------------------------------------------
 # Pairwise signal computation
 # ---------------------------------------------------------------------------
-
 _VERIFIABLE_SITES = frozenset({
     'Twitter', 'Instagram', 'YouTube', 'TikTok', 'Facebook', 'Threads',
     'LinkedIn', 'Mastodon',
@@ -159,7 +156,6 @@ def _pair_weight(
     w = 0.0
 
     # ---- Strong signals ----
-
     # Same perceptual photo cluster (+5): same profile photo = same person.
     # Weight raised to 5 so a single photo match is always decisive even when
     # negative signals (avatar-type mismatch, location conflict) push back.
@@ -188,7 +184,6 @@ def _pair_weight(
         w += 3
 
     # ---- Medium signals (+2) ----
-
     # Fuzzy display-name match > 0.85
     dn_a = (pa.get('display_name') or '').strip()
     dn_b = (pb.get('display_name') or '').strip()
@@ -216,7 +211,6 @@ def _pair_weight(
         w += 2
 
     # ---- Weak signals (+1) ----
-
     # Same exact username variant
     var_a = (a.variant or '').lower()
     var_b = (b.variant or '').lower()
@@ -242,7 +236,7 @@ def _pair_weight(
 
     # Stylometric bio match: punctuation / capitalization / lexical
     # fingerprint similarity above the (intentionally strict) threshold.
-    # Conservative weight (+2) — bios are short and stylometry alone is
+    # Conservative weight (+2) - bios are short and stylometry alone is
     # never enough to merge two accounts, but it tips the scale on
     # otherwise ambiguous edges. This is the signal that catches an
     # impostor reusing a display-name but writing in a clearly different
@@ -265,7 +259,6 @@ def _pair_weight(
             w += 1
 
     # ---- Negative signals (−2) ----
-
     # Different verified status on platforms that support verification
     if a.site in _VERIFIABLE_SITES and b.site in _VERIFIABLE_SITES:
         if ver_a != ver_b:
@@ -301,7 +294,6 @@ def _pair_weight(
 # ---------------------------------------------------------------------------
 # Connected-components BFS
 # ---------------------------------------------------------------------------
-
 def _connected_components(n: int, adj: list[list[int]]) -> list[list[int]]:
     visited = [False] * n
     components: list[list[int]] = []
@@ -325,7 +317,6 @@ def _connected_components(n: int, adj: list[list[int]]) -> list[list[int]]:
 # ---------------------------------------------------------------------------
 # Cluster aggregation helpers
 # ---------------------------------------------------------------------------
-
 def _agg_display_name(found: list['CheckResult'], indices: list[int]) -> Optional[str]:
     names = [
         (found[i].profile or {}).get('display_name') or ''
@@ -364,7 +355,6 @@ def _agg_verified_on(found: list['CheckResult'], indices: list[int]) -> list[str
 # ---------------------------------------------------------------------------
 # Main API
 # ---------------------------------------------------------------------------
-
 def disambiguate(
     found: list['CheckResult'],
     photo_clusters: list,
@@ -379,7 +369,7 @@ def disambiguate(
     if n == 0:
         return []
 
-    # Build photo-URL → cluster-index mapping so we can do URL-based lookups
+    # Build photo-URL → cluster-index mapping so can do URL-based lookups
     # instead of relying on index alignment with identity.py's found_dicts.
     photo_url_to_cid: dict[str, int] = {}
     for cid, pc in enumerate(photo_clusters or []):
@@ -398,7 +388,7 @@ def disambiguate(
         return cid_a is not None and cid_a == cid_b
 
     # Identify which accounts are separator-variants of the input username.
-    # e.g. searching "hamaffs" also finds "hama.ffs" and "hama_ffs" — all have
+    # e.g. searching "aliceuser" also finds "alice.user" and "alice_user" - all have
     # the same normalized root and are almost certainly the same person.
     # This signal only fires when BOTH accounts share the input's root, so it
     # never incorrectly links "pewdiepie123" (root="pewdiepie123") to "pewdiepie".
@@ -415,7 +405,7 @@ def disambiguate(
         for j in range(i + 1, n):
             w = _pair_weight(found[i], found[j], _photo_same_cluster(found[i], found[j]))
             # Separator-variant bonus (+3): both variants are separator forms of
-            # the same input root (hamaffs ↔ hama.ffs ↔ hama_ffs).  Only fires
+            # the same input root (aliceuser ↔ alice.user ↔ alice_user). Only fires
             # when the two variants are DIFFERENT from each other (same variant
             # pairs are already covered by the regular +1 same-variant signal).
             if (i in sep_variant_set and j in sep_variant_set
@@ -486,9 +476,8 @@ def _label_clusters(clusters: list[DisambiguationCluster]) -> None:
         top = clusters[0]
         if top.max_score >= SECONDARY_MIN_SCORE:
             top.label = LABEL_SECONDARY
-        # If everything is below 40 the labels stay LOW — expected for
+        # If everything is below 40 the labels stay LOW - expected for
         # searches that return only squatter accounts.
-
 
 def attach_identity_fields(
     found: list['CheckResult'],

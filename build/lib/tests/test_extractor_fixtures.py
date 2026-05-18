@@ -138,57 +138,41 @@ class YouTubeFixture(unittest.TestCase):
 # Instagram — web_profile_info JSON API
 # ---------------------------------------------------------------------------
 
-_IG_FIXTURE_BIO_LINKS = """
-{"data":{"user":{
-  "full_name":"Alice Test",
-  "biography":"hi @bob check https://twitter.com/charlie",
-  "biography_with_entities":{
-    "entities":[
-      {"user":{"username":"bob"}},
-      {"url":"https://twitter.com/charlie"}
-    ]
-  },
-  "profile_pic_url_hd":"https://ig/hd.jpg",
-  "edge_followed_by":{"count":50},
-  "edge_follow":{"count":159},
-  "edge_owner_to_timeline_media":{"count":1},
-  "is_verified":false,
-  "is_private":true,
-  "external_url":"https://linktr.ee/alice",
-  "category_name":"Personal Blog",
-  "business_email":"alice@example.com"
-}}}
+# Instagram now parses the public www.instagram.com/{handle}/ HTML
+# response — only og:* meta tags are available to logged-out viewers.
+_IG_FIXTURE_HTML = """
+<!doctype html>
+<html><head>
+<meta property="og:title" content="Alice Test (&#064;alice) &#x2022; Instagram photos and videos">
+<meta property="og:description" content="50 Followers, 159 Following, 1 Posts - See Instagram photos and videos from Alice Test (&#064;alice)">
+<meta property="og:image" content="https://ig/hd.jpg">
+<meta property="og:url" content="https://www.instagram.com/alice/">
+</head><body></body></html>
 """.strip()
 
 
 class InstagramFixture(unittest.TestCase):
-    def test_basic_fields(self):
-        out = extract_instagram(_IG_FIXTURE_BIO_LINKS, "alice")
+    def test_display_name_from_og_title(self):
+        out = extract_instagram(_IG_FIXTURE_HTML, "alice")
         self.assertEqual(out["display_name"], "Alice Test")
+
+    def test_counts_from_og_description(self):
+        out = extract_instagram(_IG_FIXTURE_HTML, "alice")
         self.assertEqual(out["followers"], 50)
         self.assertEqual(out["following"], 159)
         self.assertEqual(out["posts"], 1)
-        self.assertTrue(out["private"])
+
+    def test_photo_from_og_image(self):
+        out = extract_instagram(_IG_FIXTURE_HTML, "alice")
         self.assertEqual(out["photo"], "https://ig/hd.jpg")
 
-    def test_external_url_becomes_website(self):
-        out = extract_instagram(_IG_FIXTURE_BIO_LINKS, "alice")
-        self.assertEqual(out["website"], "https://linktr.ee/alice")
-
-    def test_category_and_business_email(self):
-        out = extract_instagram(_IG_FIXTURE_BIO_LINKS, "alice")
-        self.assertEqual(out["category"], "Personal Blog")
-        self.assertEqual(out["email"], "alice@example.com")
-
-    def test_bio_entities_feed_linked_accounts(self):
-        out = extract_instagram(_IG_FIXTURE_BIO_LINKS, "alice")
-        linked = out.get("linked_accounts") or []
-        # The @bob mention becomes an Instagram URL
-        self.assertIn("https://instagram.com/bob", linked)
-        # The inline URL is preserved
-        self.assertIn("https://twitter.com/charlie", linked)
-        # Self-mention (alice in own bio entities) shouldn't appear.
-        self.assertNotIn("https://instagram.com/alice", linked)
+    def test_no_display_name_when_only_handle(self):
+        body = (
+            '<meta property="og:title" content=" (&#064;alice) &#x2022; Instagram photos and videos">'
+            '<meta property="og:description" content="0 Followers, 0 Following, 0 Posts - See Instagram photos and videos from  (&#064;alice)">'
+        )
+        out = extract_instagram(body, "alice")
+        self.assertNotIn("display_name", out)
 
 
 # ---------------------------------------------------------------------------

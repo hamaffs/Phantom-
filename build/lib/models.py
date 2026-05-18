@@ -27,34 +27,94 @@ DEFAULT_HEADERS = {
 
 USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_.\-]{1,64}$")
 
-# Title fragments that indicate a Cloudflare / WAF / captcha challenge —
-# the body cannot be trusted as a real response.
+# Title fragments + body fingerprints that indicate a Cloudflare / WAF /
+# captcha challenge - the body cannot be trusted as a real response.
+#
+# Each entry is (substring_match, vendor_label). Substring matches are
+# done against the lowercased <title> first, then the full body as
+# fallback. The vendor label is surfaced on CheckResult.blocked_by so
+# users (and the LLM analyst) can see *what* blocked us, not just that
+# were blocked. Phase 5 OPSEC hardening relies on this signal.
 BOT_TITLE_HINTS = (
-    "just a moment",
-    "please wait",
-    "attention required",
-    "verify you are human",
-    "checking your browser",
-    "robot check",
-    "access denied",
-    "ddos protection",
-    "client challenge",
-    "ng guard",
-    "prove your humanity",
+    ("just a moment", "cloudflare"),
+    ("attention required", "cloudflare"),
+    ("checking your browser", "cloudflare"),
+    ("ddos protection", "cloudflare"),
+    ("please wait", "generic_challenge"),
+    ("verify you are human", "generic_challenge"),
+    ("robot check", "generic_challenge"),
+    ("access denied", "generic_block"),
+    ("client challenge", "datadome"),
+    ("ng guard", "datadome"),
+    ("prove your humanity", "hcaptcha"),
+    ("captcha", "captcha_generic"),
+    ("imperva incapsula", "imperva"),
+    ("are you a human", "perimeterx"),
+)
+
+# Body-level fingerprints - match against full lowercased body, not title.
+# These catch challenges that don't put their name in <title>.
+BOT_BODY_HINTS = (
+    ("cf-challenge-running", "cloudflare"),
+    ("__cf_chl_", "cloudflare"),
+    ("cf_chl_opt", "cloudflare"),
+    ("/cdn-cgi/challenge-platform/", "cloudflare"),
+    ("turnstile.cloudflare", "cloudflare_turnstile"),
+    ("h-captcha", "hcaptcha"),
+    ("hcaptcha.com/captcha", "hcaptcha"),
+    ("g-recaptcha", "recaptcha"),
+    ("recaptcha/api.js", "recaptcha"),
+    ("datadome", "datadome"),
+    ("perimeterx.net", "perimeterx"),
+    ("_pxhd", "perimeterx"),
+    ("incapsula incident", "imperva"),
+    ("_incap_", "imperva"),
+    ("akamai bot manager", "akamai"),
+    ("ak-bmsc", "akamai"),
+    ("sucuri webfirewall", "sucuri"),
+)
+
+# Login-wall fingerprints - sites that gate profile pages behind auth.
+# When matched, the result must be UNKNOWN, not False (different from a
+# "user doesn't exist" verdict). These often appear *with* a 200 status
+# and a body that superficially looks like a real page, which is why
+# the bug existed before Phase 5+1 - Facebook absence_text used to
+# include "rsrcTags" which is on every login wall, so Phantom told
+# users every Facebook profile didn't exist.
+#
+# Each entry is (substring, vendor_label). Vendor labels are surfaced
+# as CheckResult.blocked_by ("login:facebook" etc.) so reports can
+# distinguish "don't know - login required" from "don't know -
+# Cloudflare blocked us".
+LOGIN_WALL_BODY_HINTS = (
+    # Facebook - `rsrcTags` is on every Facebook page including logged-out
+    # walls; the more specific signal is the login form action + the
+    # logged-out canvas markup.    ('id="login_form"', "facebook"),
+    ('action="/login/device-based/regular/login/"', "facebook"),
+    ("you must log in to continue", "facebook"),
+    ('"requires_login_to_view"', "facebook"),
+    # Instagram API endpoint - known canned response from 2024+    ('"require_login":true', "instagram"),
+    ('"please wait a few minutes before you try again"', "instagram"),
+    ("login • instagram", "instagram"),
+    # TikTok - desktop login wall is interstitial JSON    ('"login.signupTitle"', "tiktok"),
+    ('"webapp.user-detail-redirect"', "tiktok"),
+    # LinkedIn - auth wall    ("authwall", "linkedin"),
+    ("join linkedin to see", "linkedin"),
+    # X / Twitter logged-out shell    ('"need to log in"', "twitter"),
+    # Discord    ("you need to be logged in to view this content", "discord"),
 )
 
 _TITLE_RE = re.compile(r"<title[^>]*>([^<]*)</title>", re.IGNORECASE)
 
 # CDN domains that send `cross-origin-resource-policy: same-origin`, blocking
 # browsers from loading the image in cross-origin contexts (file:// reports).
-# For these we embed the bytes as a base64 data URI instead of a URL.
+# For these embed the bytes as a base64 data URI instead of a URL.
 _CORP_RESTRICTED_CDNS = (
     "fbcdn.net/", "cdninstagram.com/",
-    # TikTok's CDNs Referer-gate every image — clicking the URL in a
+    # TikTok's CDNs Referer-gate every image - clicking the URL in a
     # browser tab returns "Access Denied" because the browser sends no
-    # Referer. We already fetched the bytes via _fetch_image (which
-    # adds the right Referer), so inline them as a data URI instead.
-    "tiktokcdn.com/", "tiktokcdn-us.com/",
+    # Referer. already fetched the bytes via _fetch_image (which
+    # adds the right Referer), so inline them as a data URI instead.    "tiktokcdn.com/", "tiktokcdn-us.com/",
 )
 
 def _photo_to_data_uri(url: str, photo_bytes_map: Optional[dict]) -> Optional[str]:
@@ -73,7 +133,6 @@ def _photo_to_data_uri(url: str, photo_bytes_map: Optional[dict]) -> Optional[st
 # ---------------------------------------------------------------------------
 # Data model
 # ---------------------------------------------------------------------------
-
 @dataclass(frozen=True)
 class Site:
     name: str
@@ -136,12 +195,12 @@ class CheckResult:
     identity_id: Optional[int] = None        # cluster ID assigned by disambiguation.py
     is_primary_identity: Optional[bool] = None  # True iff this account's cluster is the primary
     signals: list = field(default_factory=list)  # confidence trace: [{"label": str, "weight": int}, ...]
+    blocked_by: Optional[str] = None  # Phase 5: vendor of the bot-wall / challenge that blocked us (e.g. "cloudflare", "datadome", "hcaptcha"). None when no challenge detected.
 
 
 # ---------------------------------------------------------------------------
 # Loading
 # ---------------------------------------------------------------------------
-
 def load_sites(path: Path) -> list[Site]:
     raw = json.loads(path.read_text(encoding="utf-8"))
     sites = []
@@ -172,20 +231,59 @@ def load_sites(path: Path) -> list[Site]:
 # ---------------------------------------------------------------------------
 # Detection
 # ---------------------------------------------------------------------------
-
 def _expand(patterns: list[str], username: str) -> list[str]:
     """Substitute {username} in detection patterns."""
     return [p.replace("{username}", username) for p in patterns]
 
 
-def _is_bot_wall(body: str) -> bool:
+def _detect_bot_wall(body: str) -> Optional[str]:
+    """Return the vendor label ('cloudflare', 'datadome', 'hcaptcha', ...)
+    when the body looks like a challenge page, else None.
+
+    Title hints take precedence over body hints because <title> is more
+    discriminating (a real profile page rarely contains "verify you are
+    human" in <title>). Body fingerprints catch CDN tags / script srcs
+    that show up even when the page renders an OK title.
+    """
     if not body:
-        return False
+        return None
     m = _TITLE_RE.search(body)
-    if not m:
-        return False
-    title = m.group(1).strip().lower()
-    return any(h in title for h in BOT_TITLE_HINTS)
+    if m:
+        title = m.group(1).strip().lower()
+        for fragment, vendor in BOT_TITLE_HINTS:
+            if fragment in title:
+                return vendor
+    lowered = body.lower() if len(body) < 200_000 else body[:200_000].lower()
+    for fragment, vendor in BOT_BODY_HINTS:
+        if fragment in lowered:
+            return vendor
+    return None
+
+
+def _is_bot_wall(body: str) -> bool:
+    """Back-compat shim — returns True/False without the vendor label."""
+    return _detect_bot_wall(body) is not None
+
+
+def _detect_login_wall(body: str) -> Optional[str]:
+    """Return the platform label when the body is a login wall, else None.
+
+    Login walls are NOT the same as bot walls (Cloudflare). A login wall
+    is a logged-out version of a real platform — the page exists but the
+    profile data is hidden behind auth. The verdict for a login-walled
+    response is UNKNOWN, not MISSING — Phantom previously misclassified
+    these as "user doesn't exist" because their absence_text rules
+    matched the login wall's own markup (e.g. Facebook's 'rsrcTags').
+    """
+    if not body:
+        return None
+    # Body-level only - titles are usually generic ("Facebook", "Instagram")
+    # and not discriminating.
+    lowered = body.lower() if len(body) < 200_000 else body[:200_000].lower()
+    for fragment, vendor in LOGIN_WALL_BODY_HINTS:
+        if fragment in lowered:
+            return vendor
+    return None
 
 
 def evaluate(site: Site, status: int, body: str, username: str) -> tuple[Optional[bool], str]:
@@ -199,12 +297,18 @@ def evaluate(site: Site, status: int, body: str, username: str) -> tuple[Optiona
 
     1. If the status is in `invalid_status` → MISSING. Status codes are the
        single most reliable signal when the site has clean ones.
-    2. If the body matches an `absence_text` pattern → MISSING. A site
+    2. **Login-wall detection runs BEFORE absence-text matching** because
+       login walls (Facebook 'rsrcTags', Instagram 'require_login:true',
+       TikTok login overlay) often contain strings that look like absence
+       markers but actually mean "we couldn't read the profile, auth
+       required." Order matters: absence-rule first would falsely
+       report every Facebook user as MISSING from a logged-out scan.
+    3. If the body matches an `absence_text` pattern → MISSING. A site
        saying "user not found" beats a misleading 200.
-    3. Bot-wall detection (Cloudflare/captcha title) → UNKNOWN. Body is
+    4. Bot-wall detection (Cloudflare/captcha title) → UNKNOWN. Body is
        untrustworthy.
-    4. Method-specific positive checks (status_code or presence_text).
-    5. Anything else → UNKNOWN.
+    5. Method-specific positive checks (status_code or presence_text).
+    6. Anything else → UNKNOWN.
     """
     presence = _expand(site.presence_text, username)
     absence = _expand(site.absence_text, username)
@@ -212,15 +316,34 @@ def evaluate(site: Site, status: int, body: str, username: str) -> tuple[Optiona
     body_has_presence = any(p in body for p in presence) if presence else False
     body_has_absence = any(p in body for p in absence) if absence else False
 
-    # 1. Hard MISSING signals.
+    # 1. Hard MISSING by status code (always trustworthy - 404 is 404).
     if status in site.invalid_status:
         return False, f"{status}"
+
+    # 1.5. Presence wins over login-wall: if the body genuinely contains
+    # the presence pattern (e.g. an unauthenticated Instagram API
+    # response that DID return data), trust the presence. Only fall
+    # through to login-wall classification when couldn't confirm the
+    # account exists.
+    if body_has_presence:
+        # Fall through - let the per-method block below register a True.
+        pass
+    else:
+        # 2. Login-wall detection (NEW): runs before absence so the
+        # `rsrcTags` / `require_login:true` strings on login pages don't
+        # masquerade as "user doesn't exist".
+        login_vendor = _detect_login_wall(body)
+        if login_vendor is not None:
+            return None, f"login-wall:{login_vendor}"
+
+    # 3. Body-level absence.
     if body_has_absence:
         return False, "absence"
 
-    # 2. Bot-wall — body unreliable, status was likely 200 from the WAF.
-    if _is_bot_wall(body):
-        return None, "bot-wall"
+    # 4. Bot-wall - body unreliable, status was likely 200 from the WAF.
+    vendor = _detect_bot_wall(body)
+    if vendor is not None:
+        return None, f"bot-wall:{vendor}"
 
     # 3. Method-specific positive decision.
     if site.method == "status":
@@ -235,7 +358,7 @@ def evaluate(site: Site, status: int, body: str, username: str) -> tuple[Optiona
             if body_has_presence:
                 return True, "presence"
             return None, "no-presence"
-        # No presence patterns defined — last resort: trust the status.
+        # No presence patterns defined - last resort: trust the status.
         if status >= 400:
             return None, f"{status}"
         return True, "no-absence"
@@ -244,7 +367,6 @@ def evaluate(site: Site, status: int, body: str, username: str) -> tuple[Optiona
 # ---------------------------------------------------------------------------
 # HTTP backends
 # ---------------------------------------------------------------------------
-
 async def _drain(stream, max_body: int) -> bytes:
     """Read until EOF or max_body, in chunks."""
     chunks: list[bytes] = []

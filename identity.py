@@ -58,8 +58,7 @@ except ImportError:  # pragma: no cover — opencv-python is in requirements
     HAS_CV2 = False
 
 # Per-process cache for face-detection results, keyed by photo URL.
-# OpenCV's Haar cascade load + per-image scan is ~30–80ms; cache so a
-# rerun of `_pick_subject_photo` (or any future caller) is instant.
+# OpenCV's Haar cascade load + per-image scan is ~30-80ms.
 _FACE_CACHE: dict[str, bool] = {}
 _FACE_CASCADE = None  # lazily loaded on first call
 
@@ -129,8 +128,8 @@ _PHASH_MATCH_DISTANCE = 16
 _DHASH_MATCH_DISTANCE = 16
 _WHASH_MATCH_DISTANCE = 12
 
-# Profile photo fetch budget. Stays small because we don't actually need
-# the whole image — phash works on a 32×32 downscale.
+# Profile photo fetch budget. Stays small because don't actually need
+# the whole image - phash works on a 32×32 downscale.
 _IMAGE_FETCH_TIMEOUT = 8.0
 _IMAGE_MAX_BYTES = 2 * 1024 * 1024
 _IMAGE_USER_AGENT = (
@@ -138,7 +137,7 @@ _IMAGE_USER_AGENT = (
     "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 )
 
-# Words we don't want polluting the bio-overlap signal — boilerplate that
+# Words don't want polluting the bio-overlap signal - boilerplate that
 # every Instagram / Threads / Pinterest profile says.
 _BIO_STOPWORDS = {
     "the", "a", "an", "and", "or", "but", "i", "im", "i'm", "me", "my",
@@ -151,9 +150,9 @@ _BIO_STOPWORDS = {
 _TOKEN_RE = re.compile(r"[A-Za-z0-9]+")
 
 # Tiny no-API language hints. Each language has a bag of cheap-to-spot
-# common words; we count matches per language and attribute the bio to
-# the highest-scoring one. This is **rough** — we lean towards "no
-# guess" rather than pretending we know more than we do. Anyone wanting
+# common words; count matches per language and attribute the bio to
+# the highest-scoring one. This is **rough** - lean towards "no
+# guess" rather than pretending know more than do. Anyone wanting
 # real language ID should bolt on langdetect / fasttext.
 _LANG_WORDS = {
     "fr": {"je", "tu", "moi", "mais", "avec", "dans", "pour", "sans", "très", "merci", "amour", "vie"},
@@ -170,7 +169,7 @@ _LANG_WORDS = {
     "tr": {"ben", "ama", "ile", "için", "çok", "hayat", "merhaba"},
 }
 
-# Script-based detection — Unicode block presence beats any wordlist for
+# Script-based detection - Unicode block presence beats any wordlist for
 # CJK / RTL / Cyrillic. Codepoint ranges from the canonical blocks.
 _SCRIPT_BLOCKS = [
     ("ar", 0x0600, 0x06FF),
@@ -182,23 +181,21 @@ _SCRIPT_BLOCKS = [
     ("ru", 0x0400, 0x04FF),
 ]
 
-# Common country names — used to normalise location strings like
-# "Tunis, Tunisia" or "Paris, France" into a clean country tag. We only
+# Common country names - used to normalise location strings like
+# "Tunis, Tunisia" or "Paris, France" into a clean country tag. only
 # match against words at end-of-string after a comma so that city/region
 # names that *contain* a country word (e.g. "USA Today") don't trigger.
 # Casing-insensitive; multi-word entries first so e.g. "United States"
 # is preferred over a stray "States".
 _COUNTRY_NAMES = (
-    # Multi-word first so the longest match wins.
-    "United Kingdom", "United States", "United Arab Emirates",
+    # Multi-word first so the longest match wins.    "United Kingdom", "United States", "United Arab Emirates",
     "Saudi Arabia", "South Africa", "South Korea", "North Korea",
     "New Zealand", "Czech Republic", "Dominican Republic",
     "Sri Lanka", "Costa Rica", "Puerto Rico", "Hong Kong",
     "Ivory Coast", "El Salvador", "Trinidad and Tobago",
     "Bosnia and Herzegovina", "North Macedonia",
     "Papua New Guinea",
-    # Single word.
-    "Tunisia", "Algeria", "Morocco", "Egypt", "Libya", "Sudan", "Mauritania",
+    # Single word.    "Tunisia", "Algeria", "Morocco", "Egypt", "Libya", "Sudan", "Mauritania",
     "Senegal", "Nigeria", "Ghana", "Kenya", "Ethiopia", "Tanzania", "Uganda",
     "Cameroon", "Angola", "Mozambique", "Zimbabwe", "Zambia", "Rwanda",
     "France", "Germany", "Spain", "Italy", "Portugal", "Belgium",
@@ -227,7 +224,7 @@ _COUNTRY_RE = re.compile(
 # bounded by start/whitespace/punctuation. Used for soft hints (work
 # location, school name, free-form bio location) where the country
 # isn't necessarily at the end of the string. Not used for explicit
-# location fields — a 200-char bio mentioning "I love France" should
+# location fields - a 200-char bio mentioning "I love France" should
 # not be treated as the user living there.
 _COUNTRY_LOOSE_RE = re.compile(
     r'(?<![A-Za-z])(' + "|".join(re.escape(c) for c in _COUNTRY_NAMES) + r')(?![A-Za-z])',
@@ -242,7 +239,7 @@ _COUNTRY_CANONICAL = {
 }
 
 # City → country lookup for the major cities most likely to appear in a
-# work/school name without an explicit country. Conservative list —
+# work/school name without an explicit country. Conservative list -
 # only cities whose name is unambiguous (no two cities share it). This
 # keeps "Lives in Springfield" or "Works at Cambridge" from being
 # silently mapped to a country.
@@ -393,7 +390,7 @@ def _infer_geo(members: list[dict]) -> Optional[GeoHint]:
     location_strings: list[tuple[str, str]] = []  # (location, source site)
     country_strings: list[tuple[str, str]] = []
     hometowns: list[tuple[str, str]] = []
-    # Soft hints — strings where a country name *might* appear but the
+    # Soft hints - strings where a country name *might* appear but the
     # whole string isn't itself a location (e.g. Facebook's "Works at
     # Google Tunis" → a country word inside an employer name). Used as
     # a country *fallback* only, never as a raw location label.
@@ -428,7 +425,7 @@ def _infer_geo(members: list[dict]) -> Optional[GeoHint]:
     # Build a vote of country names (extracted from each location).
     # Explicit fields are weighted strongly: the city→country mapping
     # in `_normalise_country` only kicks in for a clean head token, so
-    # we trust whatever it returns.
+    # trust whatever it returns.
     all_locations = location_strings + hometowns + [
         (c, s) for (c, s) in country_strings
     ]
@@ -439,7 +436,7 @@ def _infer_geo(members: list[dict]) -> Optional[GeoHint]:
             country_sources.setdefault(country, []).append(site)
 
     # ---- Tier 1b: soft hints (Facebook "Works at <X>" / "Studied at
-    # <Y>" — country names buried inside an employer or school name).
+    # <Y>" - country names buried inside an employer or school name).
     # Each hint counts as half a vote so an explicit location always
     # wins over a soft hint when both are present, but a soft hint
     # alone can still surface a country.
@@ -488,7 +485,7 @@ def _infer_geo(members: list[dict]) -> Optional[GeoHint]:
             )
         return GeoHint(region=top, confidence=0.55, signals=signals)
 
-    # No country word matched — fall back to the most-frequent raw
+    # No country word matched - fall back to the most-frequent raw
     # location string. This handles inputs like "Lyon" that didn't
     # match either the country list or the city map.
     if all_locations:
@@ -532,7 +529,6 @@ def _infer_geo(members: list[dict]) -> Optional[GeoHint]:
 # ---------------------------------------------------------------------------
 # Data
 # ---------------------------------------------------------------------------
-
 @dataclass
 class GeoHint:
     """Best-guess regional inference based on no-API signals."""
@@ -562,8 +558,8 @@ class IdentityCluster:
     sites: list[str] = field(default_factory=list)
     variants: list[str] = field(default_factory=list)
     geo_hint: Optional[GeoHint] = None
-    # 0.0 — 1.0. 1.0 = absolute lock (multiple sites with matching photo).
-    # ~0.5 = single result, can't verify — show as a candidate.
+    # 0.0 - 1.0. 1.0 = absolute lock (multiple sites with matching photo).
+    # ~0.5 = single result, can't verify - show as a candidate.
     confidence: float = 0.0
     # Brief human-readable explanation of why these results were grouped.
     rationale: list[str] = field(default_factory=list)
@@ -576,7 +572,6 @@ class IdentityCluster:
 # ---------------------------------------------------------------------------
 # Photo fetching + hashing
 # ---------------------------------------------------------------------------
-
 _IMAGE_REFERERS = (
     ("cdninstagram.com", "https://www.instagram.com/"),
     ("fbcdn.net", "https://www.facebook.com/"),
@@ -624,12 +619,12 @@ async def _fetch_image(session: aiohttp.ClientSession, url: str) -> Optional[byt
                     if attempt == 0 and resp.status in (403, 429, 503):
                         continue
                     return None
-                # aiohttp's `read(N)` returns "at most N bytes" — it
+                # aiohttp's `read(N)` returns "at most N bytes" - it
                 # does NOT block until N bytes accumulate. Calling it
                 # with our 2MB budget therefore returns whatever's in
                 # the buffer at that moment (often just 5–8KB), which
                 # PIL then fails to decode with "image file is
-                # truncated". Loop on `readany()` instead so we drain
+                # truncated". Loop on `readany()` instead so drain
                 # the full body, with the budget enforced manually.
                 chunks: list[bytes] = []
                 total = 0
@@ -766,7 +761,7 @@ async def fetch_photo_data_multi(
             ph, dh, wh = _multihash_bytes(data)
             # Default-avatar URLs are real images (e.g. Twitch's
             # silhouette CDN) but they're shared across every user
-            # with no PFP — clustering them would group strangers.
+            # with no PFP - clustering them would group strangers.
             # Drop their hashes so they're never merge candidates.
             if _is_default_avatar(url):
                 ph, dh, wh = None, None, None
@@ -790,7 +785,6 @@ async def fetch_photo_hashes(
 # ---------------------------------------------------------------------------
 # Tokenisation helpers
 # ---------------------------------------------------------------------------
-
 def _tokens(text: Optional[str]) -> set[str]:
     if not text:
         return set()
@@ -822,7 +816,6 @@ def _normalise_name(name: Optional[str]) -> str:
 # ---------------------------------------------------------------------------
 # Clustering
 # ---------------------------------------------------------------------------
-
 def _are_same_person(
     a: dict,
     b: dict,
@@ -851,7 +844,7 @@ def _are_same_person(
     rationale: list[str] = []
 
     # Try every hash that's available on both sides. First one under
-    # its threshold wins and we return immediately — the rationale
+    # its threshold wins and return immediately - the rationale
     # records the kind + distance for inspection.
     for kind, ha, hb, threshold in (
         ("phash", phash_a, phash_b, _PHASH_MATCH_DISTANCE),
@@ -1068,7 +1061,6 @@ def correlate(
 # ---------------------------------------------------------------------------
 # Top-level entry
 # ---------------------------------------------------------------------------
-
 def aggregate_all(found: list[dict]) -> Optional[IdentityCluster]:
     """One identity summary built from *every* FOUND result.
 
@@ -1100,10 +1092,10 @@ def aggregate_all(found: list[dict]) -> Optional[IdentityCluster]:
         if (r.get("profile") or {}).get("photo")
     }
     cluster = _aggregate(indexes, found, photos_by_index, [])
-    # Confidence here means "how confident are we that we know who this
-    # person is", not "how confident are we that these are the same
-    # person" — the latter is what the per-cluster confidence tracks.
-    # We use number of contributing platforms as a rough signal: more
+    # Confidence here means "how confident are that know who this
+    # person is", not "how confident are that these are the same
+    # person" - the latter is what the per-cluster confidence tracks.
+    #  use number of contributing platforms as a rough signal: more
     # platforms → more agreement → higher confidence.
     n = len(indexes)
     if n >= 5:

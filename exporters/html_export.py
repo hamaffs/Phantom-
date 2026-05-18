@@ -1179,6 +1179,388 @@ _HTML_TEMPLATE = """<!doctype html>
     .detail-row {{ grid-template-columns: 1fr; gap: 6px; }}
     .accounts-grid {{ grid-template-columns: 1fr; }}
   }}
+
+  /* ========================================================== */
+  /* Phase 4 + 5 sections: analyst briefing, red team, breach,  */
+  /* defended perimeter. Distinct visual lane from the editorial */
+  /* main column — heavier panels, more data-density, more red. */
+  /* ========================================================== */
+
+  /* Shared section frame */
+  .ph-section {{
+    margin: 36px 0;
+    border-top: 1px solid var(--rule);
+    padding-top: 28px;
+  }}
+  .ph-section-head {{
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 16px; flex-wrap: wrap;
+    margin-bottom: 16px;
+  }}
+  .ph-section-title {{
+    font-family: 'Instrument Serif', serif;
+    font-size: 32px; line-height: 1.1; letter-spacing: -0.01em;
+    margin: 0; color: var(--ink);
+  }}
+  .ph-section-tag {{
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9.5px; letter-spacing: 0.18em;
+    text-transform: uppercase; color: var(--muted);
+  }}
+  .ph-section-meta {{
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px; color: var(--muted);
+  }}
+  .ph-empty {{
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px; color: var(--muted);
+    padding: 14px 16px;
+    border: 1px dashed var(--rule);
+    border-radius: 4px;
+  }}
+
+  /* -------- Analyst briefing -------- */
+  .ph-analyst {{
+    border: 1px solid var(--border);
+    background: var(--paper);
+    border-radius: 6px;
+    padding: 28px 32px;
+  }}
+  .ph-dossier {{
+    font-family: 'Instrument Serif', serif;
+    font-size: 17px; line-height: 1.6;
+    color: var(--ink);
+    max-width: 68ch;
+  }}
+  .ph-dossier p {{ margin: 0 0 16px; }}
+  .ph-dossier h1, .ph-dossier h2, .ph-dossier h3, .ph-dossier h4 {{
+    font-family: 'Instrument Serif', serif;
+    font-size: 19px; font-weight: 400;
+    margin: 22px 0 10px;
+    color: var(--ink);
+    border-bottom: 1px solid var(--rule);
+    padding-bottom: 4px;
+  }}
+  .ph-dossier strong {{ font-weight: 600; }}
+  .ph-llm-meta {{
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10.5px; color: var(--muted);
+    margin-top: 18px; padding-top: 14px;
+    border-top: 1px dashed var(--rule);
+    letter-spacing: 0.04em;
+  }}
+
+  /* Contradiction cards */
+  .ph-contradictions {{
+    margin-top: 30px;
+    display: grid; gap: 12px;
+  }}
+  .ph-cont-card {{
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--err);
+    background: var(--paper-2);
+    padding: 14px 18px;
+    border-radius: 0 4px 4px 0;
+  }}
+  .ph-cont-head {{
+    display: flex; gap: 10px; align-items: center;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px; letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--err);
+    margin-bottom: 10px;
+  }}
+  .ph-cont-sev {{
+    display: inline-block;
+    padding: 2px 7px;
+    border: 1px solid var(--err);
+    border-radius: 3px;
+    font-size: 9.5px;
+  }}
+  .ph-cont-claim {{
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 13px; line-height: 1.5;
+    margin: 4px 0;
+  }}
+  .ph-cont-claim b {{
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9.5px; letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 500;
+    display: inline-block;
+    margin-right: 6px;
+  }}
+  .ph-cont-evid {{
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px; color: var(--muted);
+    margin-top: 8px; padding-top: 8px;
+    border-top: 1px dashed var(--rule);
+    line-height: 1.5;
+  }}
+
+  /* Pivot cards */
+  .ph-pivots {{
+    margin-top: 26px;
+    display: grid; gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  }}
+  .ph-pivot-card {{
+    border: 1px solid var(--border);
+    background: var(--paper);
+    padding: 14px 16px;
+    border-radius: 4px;
+    position: relative;
+  }}
+  .ph-pivot-card:before {{
+    content: "→"; position: absolute;
+    top: 14px; right: 16px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 14px; color: var(--muted);
+    transition: transform 0.18s, color 0.18s;
+  }}
+  .ph-pivot-card:hover:before {{
+    transform: translateX(4px);
+    color: var(--ink);
+  }}
+  .ph-pivot-action {{
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 13px; line-height: 1.45;
+    color: var(--ink);
+    font-weight: 500;
+    margin-bottom: 10px;
+    padding-right: 24px;
+  }}
+  .ph-pivot-why {{
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px; line-height: 1.55;
+    color: var(--muted);
+    margin: 8px 0;
+  }}
+  /* -------- Red Team Profile -------- */
+  .ph-redteam {{
+    border: 1px solid var(--err);
+    background: var(--paper-2);
+    border-radius: 6px;
+    padding: 24px 28px;
+    position: relative;
+    overflow: hidden;
+  }}
+  .ph-redteam:before {{
+    content: "AUTH ANALYST USE ONLY";
+    position: absolute; top: 0; right: -50px;
+    transform: rotate(45deg); transform-origin: top right;
+    background: var(--err);
+    color: var(--bg);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 8.5px; font-weight: 600;
+    letter-spacing: 0.20em;
+    padding: 4px 60px;
+    opacity: 0.92;
+  }}
+  .ph-redteam-grid {{
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 22px;
+  }}
+  @media (max-width: 760px) {{
+    .ph-redteam-grid {{ grid-template-columns: 1fr; }}
+  }}
+  .ph-rt-block {{
+    border-top: 1px solid var(--rule);
+    padding-top: 14px;
+  }}
+  .ph-rt-block-title {{
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 9.5px; letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--err);
+    margin-bottom: 10px;
+  }}
+  .ph-rt-pw {{
+    display: inline-block;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    background: var(--paper);
+    color: var(--ink);
+    border: 1px solid var(--border);
+    padding: 4px 10px;
+    border-radius: 3px;
+    margin: 0 6px 6px 0;
+  }}
+  .ph-rt-row {{
+    margin: 6px 0;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 12.5px; line-height: 1.5;
+  }}
+  .ph-rt-row b {{
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px; letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 500;
+    display: block; margin-bottom: 2px;
+  }}
+  .ph-rt-lever {{
+    display: inline-block;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10.5px;
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    color: var(--ink);
+    padding: 3px 9px;
+    border-radius: 3px;
+    margin: 0 5px 5px 0;
+  }}
+
+  /* -------- Breach Exposure -------- */
+  .ph-breach {{
+    border: 1px solid var(--border);
+    background: var(--paper);
+    border-radius: 6px;
+    padding: 22px 26px;
+  }}
+  .ph-breach-email {{
+    border-bottom: 1px solid var(--rule);
+    padding: 14px 0;
+  }}
+  .ph-breach-email:last-child {{ border-bottom: none; }}
+  .ph-breach-addr {{
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 14px; color: var(--ink);
+    margin-bottom: 8px;
+    word-break: break-all;
+  }}
+  .ph-breach-stats {{
+    display: flex; flex-wrap: wrap; gap: 16px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px; color: var(--muted);
+    margin-bottom: 10px;
+  }}
+  .ph-breach-stat {{
+    border: 1px solid var(--rule);
+    padding: 3px 8px;
+    border-radius: 3px;
+  }}
+  .ph-breach-stat b {{ color: var(--err); font-weight: 600; }}
+  .ph-breach-list {{
+    display: flex; flex-wrap: wrap; gap: 4px;
+    margin-top: 8px;
+  }}
+  .ph-breach-chip {{
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10.5px;
+    background: var(--paper-2);
+    border: 1px solid var(--rule);
+    padding: 3px 7px;
+    border-radius: 3px;
+    color: var(--ink);
+  }}
+  .ph-breach-chip.is-critical {{
+    border-color: var(--err);
+    color: var(--err);
+  }}
+  .ph-breach-pw {{
+    display: inline-block;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11.5px;
+    background: var(--err);
+    color: var(--bg);
+    padding: 2px 8px;
+    border-radius: 3px;
+    margin: 2px 4px 2px 0;
+    font-weight: 500;
+  }}
+
+  /* -------- Defended Perimeter (blocked sites) -------- */
+  .ph-defended {{
+    border: 1px solid var(--border);
+    background: var(--paper);
+    border-radius: 6px;
+    padding: 22px 26px;
+  }}
+  .ph-shield-grid {{
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+  }}
+  .ph-shield-card {{
+    border: 1px solid var(--border);
+    background: var(--paper-2);
+    padding: 12px 14px;
+    border-radius: 4px;
+    text-align: center;
+  }}
+  .ph-shield-vendor {{
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px; letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }}
+  .ph-shield-count {{
+    font-family: 'Instrument Serif', serif;
+    font-size: 36px; line-height: 1;
+    color: var(--err);
+  }}
+  .ph-blocked-details {{
+    margin-top: 12px;
+  }}
+  .ph-blocked-details > summary {{
+    cursor: pointer;
+    list-style: none;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    padding: 8px 12px;
+    border: 1px dashed var(--rule);
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    user-select: none;
+    transition: color 0.15s, border-color 0.15s;
+  }}
+  .ph-blocked-details > summary::-webkit-details-marker {{ display: none; }}
+  .ph-blocked-details > summary::marker {{ display: none; content: ""; }}
+  .ph-blocked-details > summary:hover {{
+    color: var(--ink);
+    border-color: var(--ink);
+  }}
+  .ph-blocked-details > summary:before {{
+    content: "▸";
+    font-family: monospace;
+    font-size: 12px;
+    transition: transform 0.15s;
+  }}
+  .ph-blocked-details[open] > summary:before {{
+    transform: rotate(90deg);
+  }}
+  .ph-blocked-list {{
+    display: flex; flex-wrap: wrap; gap: 5px;
+    margin-top: 12px;
+    max-height: 360px;
+    overflow-y: auto;
+    padding: 8px 4px;
+    border-top: 1px dashed var(--rule);
+  }}
+  .ph-blocked-site {{
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10.5px;
+    background: var(--paper-2);
+    border: 1px solid var(--rule);
+    padding: 3px 8px;
+    border-radius: 3px;
+    color: var(--ink);
+  }}
+  .ph-blocked-site .v {{
+    color: var(--err);
+    margin-left: 6px;
+    font-size: 9.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }}
 </style>
 <script>
 document.addEventListener('DOMContentLoaded', function() {{
@@ -1262,6 +1644,16 @@ document.addEventListener('DOMContentLoaded', function() {{
 </section>
 
 {graph_section}
+
+{analyst_briefing}
+
+{breach_section}
+
+{crosslinks_section}
+
+{red_team_section}
+
+{defended_section}
 
 <section class="accounts">
   <div class="acct-filter-row">
@@ -2092,7 +2484,7 @@ def _platform_domain(url: str) -> Optional[str]:
     }
     if host in map_:
         return map_[host]
-    # Mastodon instances vary — soft-match.
+    # Mastodon instances vary - soft-match.
     if "mastodon" in host or host.endswith(".social"):
         return "Mastodon"
     return None
@@ -2321,7 +2713,7 @@ def _html_card(r: CheckResult, photo_match: Optional[list] = None,
     photo_url = p.get("photo")
     # Suppress platform-default placeholder avatars (Instagram gradient,
     # Facebook silhouette URL fragment, etc.) so the card falls back to
-    # the letter glyph — same rule the identity graph uses.
+    # the letter glyph - same rule the identity graph uses.
     if photo_url and _photo_is_likely_default(photo_url, photo_bytes_map):
         photo_url = None
     initial = (p.get("display_name") or r.variant or r.site or "?")[:1].upper()
@@ -2377,10 +2769,10 @@ def _html_card(r: CheckResult, photo_match: Optional[list] = None,
         f'Open profile <span class="arrow">↗</span></a>'
     )
 
-    # Evidence trace — every signal that fired in confidence.score_result,
+    # Evidence trace - every signal that fired in confidence.score_result,
     # rendered as a collapsible "Why this score" block under the card. This
     # is the kind of judgment Maigret literally doesn't produce: instead of
-    # just showing a number, we show *why* that number.
+    # just showing a number, show *why* that number.
     evidence_html = ""
     signals = getattr(r, "signals", None) or []
     if signals:
@@ -2476,7 +2868,7 @@ def _html_unknown_row(r: CheckResult) -> str:
         f'<td><span class="dim">{html.escape(r.variant or "")}</span></td>'
         '</tr>'
     )
-# Sites whose users typically post real selfies as the avatar — break
+# Sites whose users typically post real selfies as the avatar - break
 # ties in favour of these when several photos contain a detected face.
 _SELFIE_SITES = frozenset({
     "Behance", "Instagram", "Twitter", "Threads", "Facebook", "LinkedIn",
@@ -2585,7 +2977,7 @@ def _pick_subject_photo(overall, clusters, found, face_map=None) -> Optional[str
         )
         return _log("face detected", face_cands[0]["url"])
 
-    # (b) No face anywhere — but selfie-site photos are still very
+    # (b) No face anywhere - but selfie-site photos are still very
     # likely real (Haar misses faces routinely on creative profile
     # angles). Prefer them over logo-leaning sites.
     selfie_cands = [c for c in candidates if c["is_selfie_site"]]
@@ -2728,7 +3120,7 @@ def _classify_name(s: str, variant_set: set[str]) -> str:
         if noise in lower:
             return "noise"
 
-    # Same as one of the variants we already tested.
+    # Same as one of the variants already tested.
     if lower in variant_set:
         return "username"
 
@@ -2758,10 +3150,10 @@ def _detect_subject_names(
     for r in found:
         if r.exists is not True:
             continue
-        # Skip impostor-tier results — their names are misleading.
+        # Skip impostor-tier results - their names are misleading.
         if getattr(r, "tier", None) == "possible_impostor":
             continue
-        # Skip non-primary-identity members when we have a cluster.
+        # Skip non-primary-identity members when have a cluster.
         if r.is_primary_identity is False:
             continue
         p = r.profile or {}
@@ -2769,7 +3161,7 @@ def _detect_subject_names(
         dn = p.get("display_name")
         if isinstance(dn, str) and dn.strip():
             candidates.append(dn.strip())
-        # Bios sometimes carry the real name as the first / only line —
+        # Bios sometimes carry the real name as the first / only line -
         # YouTube About-page descriptions are the canonical example.
         # Limit to the first 60 chars to avoid pulling in entire bios.
         bio = p.get("bio")
@@ -2792,7 +3184,7 @@ def _detect_subject_names(
 
     real = pick(real_counts)
     nick = pick(nick_counts)
-    # Don't double-show — if real_name already starts with the nickname
+    # Don't double-show - if real_name already starts with the nickname
     # (e.g. real "Hama Affs" and nick "Hama"), drop the nickname.
     if real and nick and (nick.lower() in real.lower() or real.lower().startswith(nick.lower())):
         nick = ""
@@ -2805,7 +3197,7 @@ def _build_detail_rows(overall, found, all_variants: list[str]) -> str:
     rows: list[tuple[str, str]] = []
 
     # Real-name / nickname detection runs first because the analyst
-    # needs the human-readable identifier at a glance — that's what
+    # needs the human-readable identifier at a glance - that's what
     # they'll search for next.
     variant_set = {(v or "").lower().strip() for v in all_variants}
     real_name, nickname = _detect_subject_names(found, variant_set)
@@ -2860,7 +3252,7 @@ def _html_photo_match_card(found, clusters, photo_bytes_map=None) -> str:
 
     # Walk the FOUND list once, keep the first 2 (site, photo) pairs
     # whose site is in this cluster's site set. Indexing the cluster
-    # member dicts directly isn't possible from here — `member_indexes`
+    # member dicts directly isn't possible from here - `member_indexes`
     # references the dedupped found_dicts list at correlation time.
     pairs: list[tuple[str, str]] = []
     seen: set[str] = set()
@@ -2883,7 +3275,7 @@ def _html_photo_match_card(found, clusters, photo_bytes_map=None) -> str:
     # Pull a hamming distance out of the cluster's rationale strings
     # (the phash matcher records "matching profile photo (hamming=N)").
     # If the merge came from DINO/Face++ instead, hamming is None and
-    # we drop that part of the metadata line.
+    # drop that part of the metadata line.
     hamming = None
     for note in (getattr(best, "rationale", None) or []):
         m = re.search(r"hamming=(\d+)", note)
@@ -2987,10 +3379,10 @@ def _photo_is_likely_default(
         # the dimmest real logos (faint outlines, monochrome wordmarks)
         # come in at 600+. A solid silhouette comes in around 100-150
         # near the edges. 200 cleanly separates real from placeholder
-        # in every sample we've checked.
+        # in every sample have checked.
         is_placeholder = variance < 200
     except Exception:
-        # If PIL can't decode (rare), don't suppress — keep the photo.
+        # If PIL can't decode (rare), don't suppress - keep the photo.
         is_placeholder = False
     _PLACEHOLDER_CACHE[data] = is_placeholder
     return is_placeholder
@@ -3023,15 +3415,15 @@ def _build_graph_data(
         p = r.profile or {}
         photo_url = p.get("photo") or ""
         # Suppress platform-default placeholder avatars so the node falls
-        # back to the letter glyph — consistent with how Facebook /
+        # back to the letter glyph - consistent with how Facebook /
         # Twitter / GitHub defaults already render. Catches Instagram's
         # gradient placeholder (which has no telltale URL marker) via the
         # byte-size heuristic.
         if photo_url and _photo_is_likely_default(photo_url, photo_bytes_map):
             photo_url = ""
         # CORP-restricted CDNs (Instagram, Facebook) won't load cross-origin
-        # in the file:// scheme — fall back to a base64 data URI built from
-        # the bytes we already fetched for the dossier.
+        # in the file:// scheme - fall back to a base64 data URI built from
+        # the bytes already fetched for the dossier.
         embedded = _photo_to_data_uri(photo_url, photo_bytes_map) if photo_url else None
         if embedded:
             photo_url = embedded
@@ -3039,7 +3431,7 @@ def _build_graph_data(
         if len(bio_snippet) > 160:
             bio_snippet = bio_snippet[:160].rstrip() + "…"
         # Bucket separates the canvas into "confirmed" (primary identity
-        # AND not impostor-tier) vs "unrelated" (everything else —
+        # AND not impostor-tier) vs "unrelated" (everything else -
         # secondary clusters, low-confidence clusters, AND any
         # possible_impostor node even if disambiguation lumped it into
         # the primary cluster). Tier wins over cluster membership: a
@@ -3104,15 +3496,15 @@ def _build_graph_data(
             for b in valid[i + 1:]:
                 _add_edge(a, b, kind)
 
-    # 1. Disambiguation clusters — strongest signal.
+    # 1. Disambiguation clusters - strongest signal.
     if dis_clusters:
         for c in dis_clusters:
             if c.size >= 2:
                 _connect_members(list(c.member_indices), "cluster")
 
-    # 2. Photo-hash clusters from identity.py — these refer to member
+    # 2. Photo-hash clusters from identity.py - these refer to member
     #    indexes into the dedupped found_dicts list, which is *not* the
-    #    same as our `found` list. We approximate by matching site name
+    #    same as our `found` list. approximate by matching site name
     #    + photo URL.
     if clusters:
         photo_url_to_node: dict[str, list[int]] = {}
@@ -3151,10 +3543,10 @@ def _build_graph_data(
     # bundles an impostor (red dashed) node into the primary cluster, it
     # generates "same identity" edges from that node to every real
     # account. Those edges pull the impostor back into the main web no
-    # matter how strongly the bucket gravity pushes it away. We treat
+    # matter how strongly the bucket gravity pushes it away. treat
     # cross-bucket cluster edges as noise (the disambiguation algorithm
     # was over-eager) and drop them entirely. Photo-match and bio-link
-    # edges across buckets are kept — those are genuine signals worth
+    # edges across buckets are kept - those are genuine signals worth
     # surfacing ("impostor stole your photo" is meaningful).
     bucket_by_id = {n["id"]: n["bucket"] for n in nodes}
     edges = []
@@ -3307,13 +3699,616 @@ def _html_cluster_section(found: list, dis_clusters: list, photo_bytes_map: Opti
             f'</div></details>'
         )
 
+    # Render any FOUND that didn't land in a cluster - otherwise
+    # single-account variant matches silently disappear from the report.
+    clustered_indices: set[int] = set()
+    for c in dis_clusters:
+        clustered_indices.update(c.member_indices)
+    orphan_pairs = [
+        (i, r) for i, r in enumerate(found) if i not in clustered_indices
+    ]
+    if orphan_pairs:
+        orphan_pairs.sort(key=lambda ir: -(ir[1].score or 0))
+        orphan_html = "".join(
+            _html_card(
+                r,
+                tier=TIER_VERIFIED if r.tier == TIER_VERIFIED else None,
+                photo_bytes_map=photo_bytes_map,
+                card_id=card_id_by_index.get(i),
+            )
+            for i, r in orphan_pairs
+        )
+        parts.append(
+            f'<details class="unknown-fold" open style="margin-top:18px">'
+            f'<summary>Other matches ({len(orphan_pairs)})</summary>'
+            f'<div class="aux-panel" style="margin-top:14px">'
+            f'<div class="accounts-grid">{orphan_html}</div>'
+            f'</div></details>'
+        )
+
     return "\n".join(parts) if parts else (
         '<div class="accounts-grid">'
         '<div class="acct" style="grid-column:1/-1;justify-content:center">'
         '<div class="body"><div class="bio">No confirmed accounts.</div></div>'
         '</div></div>'
     )
-def export_html(grouped, raw, elapsed, path: Path, overall=None, clusters=None, emails=None, deep_evidence=None, face_map=None, dark=False, include_toggle=True, dis_clusters=None, photo_bytes_map=None) -> None:
+# ---------------------------------------------------------------------------
+# Phase 4 + 5 sections (analyst briefing, red team profile, breach exposure,
+# defended perimeter). Each returns a self-contained HTML string or "" when
+# the section has no relevant data. The export_html dispatcher wires them
+# into named template slots.
+# ---------------------------------------------------------------------------
+def _md_to_html(md: str) -> str:
+    """Lightweight Markdown → HTML for the LLM dossier.
+
+    The models we use (Claude Haiku, Llama, Groq) all output Markdown by
+    default. We don't need a full parser — just headings (#/##), bold
+    (**x**), and paragraphs. Anything fancier (lists, tables) gets
+    treated as paragraph text — still readable, never explodes.
+    """
+    if not md:
+        return ""
+    out_lines: list[str] = []
+    paragraph: list[str] = []
+
+    def _flush():
+        if paragraph:
+            text = " ".join(paragraph).strip()
+            if text:
+                # Bold conversion **x** → <strong>x</strong>
+                text = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", text)
+                out_lines.append(f"<p>{text}</p>")
+            paragraph.clear()
+
+    for line in md.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            _flush()
+            continue
+        if stripped.startswith("####"):
+            _flush()
+            out_lines.append(f"<h4>{html.escape(stripped.lstrip('# ').strip())}</h4>")
+        elif stripped.startswith("###"):
+            _flush()
+            out_lines.append(f"<h3>{html.escape(stripped.lstrip('# ').strip())}</h3>")
+        elif stripped.startswith("##"):
+            _flush()
+            out_lines.append(f"<h2>{html.escape(stripped.lstrip('# ').strip())}</h2>")
+        elif stripped.startswith("#"):
+            _flush()
+            out_lines.append(f"<h2>{html.escape(stripped.lstrip('# ').strip())}</h2>")
+        else:
+            # Escape, then re-apply bold so don't escape **.
+            paragraph.append(html.escape(stripped))
+    _flush()
+    return "\n".join(out_lines)
+
+
+def _render_analyst_briefing(analysis: Optional[dict]) -> str:
+    """Phase 4 narrative + JSON results. Dossier as formatted prose,
+    contradictions as warning cards, pivots as action cards.
+
+    Renders an empty-state panel when no analysis is available so the
+    user can see the section exists but knows --analyze produced nothing.
+    """
+    if not analysis:
+        return (
+            '<section class="ph-section ph-analyst-section">'
+            '<div class="ph-section-head">'
+            '<div>'
+            '<div class="ph-section-tag">// Phase 4 — Analyst</div>'
+            '<h2 class="ph-section-title">Analyst Briefing</h2>'
+            '</div>'
+            '<div class="ph-section-meta">No analysis run · use <code>--analyze</code></div>'
+            '</div>'
+            '<div class="ph-empty">'
+            'Run with <code>--analyze</code> (and an <code>llm_endpoint</code> '
+            'configured via <code>phantom --api add</code>) to generate a '
+            'narrative dossier, contradiction analysis, and pivot suggestions.'
+            '</div>'
+            '</section>'
+        )
+
+    dossier_md = analysis.get("dossier") or ""
+    model = analysis.get("model") or "llm"
+    endpoint = analysis.get("endpoint") or ""
+
+    dossier_html = _md_to_html(dossier_md) or (
+        '<p class="ph-empty">(dossier was empty)</p>'
+    )
+
+    parts: list[str] = []
+    parts.append('<section class="ph-section ph-analyst-section">')
+    parts.append('<div class="ph-section-head">')
+    parts.append('<div>')
+    parts.append('<div class="ph-section-tag">// Phase 4 — Analyst</div>')
+    parts.append('<h2 class="ph-section-title">Analyst Briefing</h2>')
+    parts.append('</div>')
+    parts.append(f'<div class="ph-section-meta">{html.escape(model)}</div>')
+    parts.append('</div>')
+
+    parts.append('<div class="ph-analyst">')
+    parts.append(f'<div class="ph-dossier">{dossier_html}</div>')
+    parts.append(
+        f'<div class="ph-llm-meta">Generated by {html.escape(model)} via '
+        f'{html.escape(endpoint)}</div>'
+    )
+
+    # Contradictions
+    conts = (analysis.get("contradictions") or {}).get("contradictions") or []
+    if conts:
+        parts.append('<div class="ph-contradictions">')
+        for c in conts:
+            sev = (c.get("severity") or "low").lower()
+            parts.append('<div class="ph-cont-card">')
+            parts.append(
+                f'<div class="ph-cont-head">'
+                f'<span>⚠ Contradiction</span>'
+                f'<span class="ph-cont-sev">severity: {html.escape(sev)}</span>'
+                f'</div>'
+            )
+            for key, label in (("claim_a", "A"), ("claim_b", "B")):
+                v = c.get(key)
+                if v:
+                    parts.append(
+                        f'<div class="ph-cont-claim"><b>{label}</b>{html.escape(str(v))}</div>'
+                    )
+            evidence = c.get("evidence")
+            if evidence:
+                if isinstance(evidence, list):
+                    evidence = ", ".join(str(e) for e in evidence)
+                parts.append(
+                    f'<div class="ph-cont-evid">'
+                    f'<b>Evidence:</b> {html.escape(str(evidence))}'
+                )
+                notes = c.get("notes")
+                if notes:
+                    parts.append(f'<br><b>Notes:</b> {html.escape(str(notes))}')
+                parts.append('</div>')
+            parts.append('</div>')
+        parts.append('</div>')
+
+    # Pivots - new schema: {action, why}. Drops the verbose "Expected:"
+    # outcome line that the model used to pad with vague speculation.
+    pivots = (analysis.get("pivots") or {}).get("pivots") or []
+    if pivots:
+        parts.append('<div class="ph-pivots">')
+        for p in pivots:
+            action = p.get("action") or ""
+            # Support both old "rationale" and new "why" field names so
+            # existing JSON dumps still render correctly.
+            why = p.get("why") or p.get("rationale") or ""
+            parts.append('<div class="ph-pivot-card">')
+            parts.append(f'<div class="ph-pivot-action">{html.escape(action)}</div>')
+            if why:
+                parts.append(f'<div class="ph-pivot-why">{html.escape(why)}</div>')
+            parts.append('</div>')
+        parts.append('</div>')
+
+    parts.append('</div>')   # /ph-analyst
+    parts.append('</section>')
+    return "".join(parts)
+
+
+def _render_red_team(analysis: Optional[dict]) -> str:
+    """Adversarial profile rendered as a classified-document panel.
+
+    Schema:
+      passwords_from_leaks: real leaked credentials from ProxyNova, or []
+      phishing_angles: each tied to specific evidence, or []
+      missing_for_red_team: one sentence on what's needed
+    """
+    adv = (analysis or {}).get("adversarial") or {}
+    # Support both new + old schema during transition. The old one had
+    # likely_passwords (which were hallucinated guesses); ignore those
+    # if the new schema isn't present.
+    pws = adv.get("passwords_from_leaks") or []
+    angles = adv.get("phishing_angles") or adv.get("phishing_pretext_angles") or []
+    missing = adv.get("missing_for_red_team") or ""
+
+    parts: list[str] = []
+    parts.append('<section class="ph-section ph-redteam-section">')
+    parts.append('<div class="ph-section-head">')
+    parts.append('<div>')
+    parts.append('<div class="ph-section-tag">// Phase 4 — Adversarial</div>')
+    parts.append('<h2 class="ph-section-title">Red Team Profile</h2>')
+    parts.append('</div>')
+    parts.append(
+        '<div class="ph-section-meta">For authorized testing only. '
+        'Evidence-backed only — no fabricated guesses.</div>'
+    )
+    parts.append('</div>')
+
+    if not analysis:
+        parts.append(
+            '<div class="ph-empty">No adversarial profile generated. '
+            'Run with <code>--analyze</code> to populate.</div>'
+        )
+        parts.append('</section>')
+        return "".join(parts)
+
+    parts.append('<div class="ph-redteam">')
+
+    # When there's NO real signal, show an honest single-panel notice
+    # rather than the two-column grid full of empty headers.
+    if not pws and not angles:
+        if missing:
+            parts.append(
+                f'<div class="ph-rt-block">'
+                f'<div class="ph-rt-block-title">No actionable red-team signal</div>'
+                f'<div class="ph-rt-row">{html.escape(str(missing))}</div>'
+                f'</div>'
+            )
+        else:
+            parts.append(
+                '<div class="ph-rt-block">'
+                '<div class="ph-rt-block-title">No actionable red-team signal</div>'
+                '<div class="ph-rt-row">No leaked credentials or evidence-grounded '
+                'phishing angles available. Strong personal OPSEC, or insufficient '
+                'evidence collected.</div>'
+                '</div>'
+            )
+        parts.append('</div>')   # /ph-redteam
+        parts.append('</section>')
+        return "".join(parts)
+
+    parts.append('<div class="ph-redteam-grid">')
+
+    # LEFT - leaked passwords from real breach data
+    parts.append('<div>')
+    if pws:
+        parts.append('<div class="ph-rt-block">')
+        parts.append(
+            '<div class="ph-rt-block-title">'
+            'Passwords from leaks (from breach data)</div>'
+        )
+        for p in pws:
+            parts.append(f'<span class="ph-rt-pw">{html.escape(str(p))}</span>')
+        parts.append('</div>')
+    else:
+        parts.append('<div class="ph-rt-block">')
+        parts.append(
+            '<div class="ph-rt-block-title">Passwords from leaks</div>'
+            '<div class="ph-rt-row" style="color:var(--muted);font-size:11.5px;">'
+            'No leaked credentials in HudsonRock / ProxyNova / XposedOrNot.</div>'
+        )
+        parts.append('</div>')
+    parts.append('</div>')
+
+    # RIGHT - phishing pretexts tied to evidence
+    parts.append('<div>')
+    if angles:
+        parts.append('<div class="ph-rt-block">')
+        parts.append(
+            '<div class="ph-rt-block-title">'
+            'Phishing angles (evidence-backed)</div>'
+        )
+        for a in angles:
+            if isinstance(a, dict):
+                ang = a.get("angle") or ""
+                # Support new "based_on" and old "why_it_works" field names.
+                why = a.get("based_on") or a.get("why_it_works") or ""
+                parts.append(
+                    f'<div class="ph-rt-row"><b>Angle</b>{html.escape(str(ang))}</div>'
+                )
+                if why:
+                    parts.append(
+                        f'<div class="ph-rt-row" style="margin-left:14px;'
+                        f'color:var(--muted);font-size:11.5px;">'
+                        f'↳ based on: {html.escape(str(why))}</div>'
+                    )
+            else:
+                parts.append(
+                    f'<div class="ph-rt-row">{html.escape(str(a))}</div>'
+                )
+        parts.append('</div>')
+    parts.append('</div>')
+
+    parts.append('</div>')   # /ph-redteam-grid
+
+    # Footer - what's missing for full RT work
+    if missing:
+        parts.append(
+            f'<div class="ph-rt-block" style="margin-top:14px;padding-top:12px;'
+            f'border-top:1px dashed var(--rule);">'
+            f'<div class="ph-rt-block-title">Coverage gap</div>'
+            f'<div class="ph-rt-row" style="color:var(--muted);font-size:11.5px;">'
+            f'{html.escape(str(missing))}</div></div>'
+        )
+
+    parts.append('</div>')   # /ph-redteam
+    parts.append('</section>')
+    return "".join(parts)
+
+
+def _render_breach_exposure(graph: Optional[dict]) -> str:
+    """Phase 1+2 breach data from Email nodes — HudsonRock infostealer,
+    ProxyNova leaked passwords, XposedOrNot public breaches.
+
+    Reads the typed graph (dict form from graph.io.graph_to_dict).
+    """
+    parts: list[str] = []
+    parts.append('<section class="ph-section ph-breach-section">')
+    parts.append('<div class="ph-section-head">')
+    parts.append('<div>')
+    parts.append('<div class="ph-section-tag">// Phase 1+2 — Exposure</div>')
+    parts.append('<h2 class="ph-section-title">Breach Exposure</h2>')
+    parts.append('</div>')
+
+    if not graph:
+        parts.append(
+            '<div class="ph-section-meta">No graph data — run with <code>--graph</code></div>'
+        )
+        parts.append('</div>')
+        parts.append(
+            '<div class="ph-empty">No graph was built. Use '
+            '<code>--graph PATH</code> alongside <code>--export</code> '
+            'to enable breach lookups.</div>'
+        )
+        parts.append('</section>')
+        return "".join(parts)
+
+    emails = [n for n in graph.get("nodes", []) if n.get("kind") == "Email"]
+    edges = graph.get("edges", []) or []
+    appeared_in = [e for e in edges if e.get("kind") == "appeared_in"]
+
+    parts.append(
+        f'<div class="ph-section-meta">'
+        f'{len(emails)} email{"s" if len(emails) != 1 else ""} indexed</div>'
+    )
+    parts.append('</div>')
+
+    if not emails:
+        parts.append(
+            '<div class="ph-empty">No email addresses discovered in this scan. '
+            'Breach lookups (HudsonRock, ProxyNova, XposedOrNot) fire only when '
+            'an Email node enters the graph (via GitHub commits, GPG keys, '
+            'profile bios, etc.).</div>'
+        )
+        parts.append('</section>')
+        return "".join(parts)
+
+    parts.append('<div class="ph-breach">')
+    nodes_by_id = {n["id"]: n for n in graph.get("nodes", [])}
+
+    any_signal = False
+    for em in emails:
+        em_attrs = em.get("attrs", {})
+        addr = em_attrs.get("address") or "?"
+        ig = em_attrs.get("infostealer_log_count") or 0
+        leaked = em_attrs.get("leaked_password_count") or 0
+        xo = em_attrs.get("xposedornot_breach_count") or 0
+        sample = em_attrs.get("leaked_password_sample") or []
+        attached_breaches = [
+            nodes_by_id[e["dst"]]
+            for e in appeared_in
+            if e.get("src") == em["id"] and e.get("dst") in nodes_by_id
+        ]
+        has_data = bool(ig or leaked or xo or sample or attached_breaches)
+        if has_data:
+            any_signal = True
+
+        parts.append('<div class="ph-breach-email">')
+        parts.append(f'<div class="ph-breach-addr">{html.escape(addr)}</div>')
+
+        # Stat row
+        stats: list[str] = []
+        if ig:
+            stats.append(
+                f'<div class="ph-breach-stat"><b>{ig}</b> infostealer victim log(s)</div>'
+            )
+        if leaked:
+            stats.append(
+                f'<div class="ph-breach-stat"><b>{leaked}</b> leaked password(s)</div>'
+            )
+        if xo:
+            stats.append(
+                f'<div class="ph-breach-stat"><b>{xo}</b> public breach(es)</div>'
+            )
+        if not has_data:
+            stats.append(
+                '<div class="ph-breach-stat" style="border-color:var(--rule);color:var(--muted);">'
+                '✓ clean across all 3 free databases</div>'
+            )
+        parts.append('<div class="ph-breach-stats">' + "".join(stats) + '</div>')
+
+        # Leaked passwords (user opted in)
+        if sample:
+            parts.append('<div style="margin-top:8px;">')
+            parts.append(
+                '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:9.5px;'
+                'letter-spacing:0.15em;text-transform:uppercase;color:var(--err);'
+                'margin-bottom:6px;">Leaked password sample (plaintext)</div>'
+            )
+            for p in sample:
+                parts.append(f'<span class="ph-breach-pw">{html.escape(str(p))}</span>')
+            parts.append('</div>')
+
+        # Attached breach nodes
+        if attached_breaches:
+            parts.append('<div class="ph-breach-list">')
+            for b in attached_breaches[:60]:
+                ba = b.get("attrs", {})
+                name = ba.get("name") or "?"
+                via = (ba.get("via") or "").lower()
+                is_critical = via in ("hudsonrock", "infostealer")
+                cls = "ph-breach-chip is-critical" if is_critical else "ph-breach-chip"
+                date = (ba.get("breach_date") or "")[:10]
+                label = name
+                if date:
+                    label += f" · {date}"
+                parts.append(f'<span class="{cls}">{html.escape(label)}</span>')
+            extra = len(attached_breaches) - 60
+            if extra > 0:
+                parts.append(
+                    f'<span class="ph-breach-chip" style="font-style:italic">+{extra} more</span>'
+                )
+            parts.append('</div>')
+
+        parts.append('</div>')   # /ph-breach-email
+
+    if not any_signal:
+        parts.append(
+            '<div style="margin-top:14px;padding-top:14px;border-top:1px dashed var(--rule);'
+            'font-family:\'IBM Plex Mono\',monospace;font-size:11px;color:var(--muted);">'
+            '✓ All emails are clean across HudsonRock (infostealer), '
+            'ProxyNova (combo lists), and XposedOrNot (public breaches). '
+            'Strong personal OPSEC.'
+            '</div>'
+        )
+
+    parts.append('</div>')   # /ph-breach
+    parts.append('</section>')
+    return "".join(parts)
+
+
+def _render_cross_links(graph: Optional[dict]) -> str:
+    """URLs found in bios but not verified (destination bot-walled or login-walled)."""
+    if not graph:
+        return ""
+    nodes = graph.get("nodes", []) or []
+    edges = graph.get("edges", []) or []
+
+    url_nodes = [n for n in nodes if n.get("kind") == "Url"]
+    if not url_nodes:
+        return ""
+
+    # Build a {url_id: [account_label, ...]} reverse map so each row
+    # shows which account(s) mentioned this URL.
+    accounts_by_id = {n["id"]: n for n in nodes if n.get("kind") == "Account"}
+    mentions: dict[str, list[dict]] = {}
+    for e in edges:
+        if e.get("kind") != "linked":
+            continue
+        dst = e.get("dst")
+        if dst in {n["id"] for n in url_nodes}:
+            src = e.get("src")
+            if src in accounts_by_id:
+                mentions.setdefault(dst, []).append(accounts_by_id[src])
+
+    # Only render URLs that have a mention from at least one Account
+    rows = [(u, mentions.get(u["id"], [])) for u in url_nodes]
+    rows = [(u, ms) for u, ms in rows if ms]
+    if not rows:
+        return ""
+
+    parts: list[str] = []
+    parts.append('<section class="ph-section ph-breach-section">')
+    parts.append('<div class="ph-section-head"><div>')
+    parts.append('<div class="ph-section-tag">// Phase 2 — Cross-links</div>')
+    parts.append('<h2 class="ph-section-title">Mentioned URLs in Bios</h2>')
+    parts.append('</div>')
+    parts.append(
+        f'<div class="ph-section-meta">'
+        f'{len(rows)} URL{"s" if len(rows) != 1 else ""} extracted</div>'
+    )
+    parts.append('</div>')
+
+    parts.append(
+        '<div class="ph-section-blurb" style="color:var(--meta-text); '
+        'font-size:13px; margin-bottom:14px;">'
+        'These URLs were found in profile bios or about-pages but Phantom '
+        "didn't independently confirm an account at the destination "
+        "(often because the destination site is bot-walled or login-walled).</div>"
+    )
+
+    parts.append('<div class="ph-breach">')
+    for u, ms in rows:
+        url = (u.get("attrs") or {}).get("url") or u.get("label", "")
+        url_esc = html.escape(url)
+        # graph_to_dict doesn't include the .label field, so derive a
+        # human label from attrs (site + handle) or the id itself.
+        source_links = []
+        for a in ms:
+            attrs = a.get("attrs") or {}
+            site = attrs.get("site") or a.get("id", "").split(":")[1] if ":" in a.get("id", "") else "?"
+            handle = attrs.get("handle") or "?"
+            label = f"{site}/{handle}"
+            href = attrs.get("url") or "#"
+            source_links.append(
+                f'<a href="{html.escape(href)}" target="_blank" rel="noopener">'
+                f'{html.escape(label)}</a>'
+            )
+        sources_html = ", ".join(source_links) or "?"
+        parts.append(
+            f'<div class="ph-breach-row"><div>'
+            f'<a href="{url_esc}" target="_blank" rel="noopener"><strong>{url_esc}</strong></a>'
+            f'<div class="ph-llm-meta" style="margin-top:2px;">mentioned by {sources_html}</div>'
+            f'</div></div>'
+        )
+    parts.append('</div></section>')
+    return "".join(parts)
+
+
+def _render_defended_perimeter(grouped) -> str:
+    """Phase 5: which sites blocked us, broken down by anti-bot vendor."""
+    blocked: list[CheckResult] = []
+    for _, rs in grouped or []:
+        for r in rs:
+            if getattr(r, "blocked_by", None):
+                blocked.append(r)
+
+    parts: list[str] = []
+    parts.append('<section class="ph-section ph-defended-section">')
+    parts.append('<div class="ph-section-head">')
+    parts.append('<div>')
+    parts.append('<div class="ph-section-tag">// Phase 5 — OPSEC</div>')
+    parts.append('<h2 class="ph-section-title">Defended Perimeter</h2>')
+    parts.append('</div>')
+    parts.append(
+        f'<div class="ph-section-meta">{len(blocked)} blocked / '
+        f'{sum(len(rs) for _, rs in (grouped or []))} total</div>'
+    )
+    parts.append('</div>')
+
+    if not blocked:
+        parts.append(
+            '<div class="ph-empty">No sites blocked this scan. Either no '
+            'targets are behind anti-bot infrastructure, or the '
+            '<code>--tls-rotate</code> / <code>--simulate-session</code> '
+            'evasion succeeded.</div>'
+        )
+        parts.append('</section>')
+        return "".join(parts)
+
+    by_vendor: dict[str, list] = {}
+    for r in blocked:
+        by_vendor.setdefault(r.blocked_by, []).append(r)
+
+    parts.append('<div class="ph-defended">')
+    parts.append('<div class="ph-shield-grid">')
+    for vendor, rs in sorted(by_vendor.items(), key=lambda kv: -len(kv[1])):
+        parts.append(
+            f'<div class="ph-shield-card">'
+            f'<div class="ph-shield-vendor">{html.escape(vendor)}</div>'
+            f'<div class="ph-shield-count">{len(rs)}</div>'
+            f'</div>'
+        )
+    parts.append('</div>')
+
+    # Per-site list is collapsed by default - useful for forensic
+    # detail but visually overwhelming when 100+ sites are blocked.
+    parts.append('<details class="ph-blocked-details">')
+    parts.append(
+        f'<summary>Show all {len(blocked)} blocked site'
+        f'{"s" if len(blocked) != 1 else ""}</summary>'
+    )
+    parts.append('<div class="ph-blocked-list">')
+    for r in blocked:
+        parts.append(
+            f'<span class="ph-blocked-site">{html.escape(r.site)}'
+            f'<span class="v">{html.escape(r.blocked_by or "")}</span>'
+            f'</span>'
+        )
+    parts.append('</div>')
+    parts.append('</details>')
+
+    parts.append('</div>')
+    parts.append('</section>')
+    return "".join(parts)
+
+
+def export_html(grouped, raw, elapsed, path: Path, overall=None, clusters=None, emails=None, deep_evidence=None, face_map=None, dark=False, include_toggle=True, dis_clusters=None, photo_bytes_map=None, graph=None, analysis=None) -> None:
     found, _, missing_count = _flatten(grouped)
     clusters = clusters or []
     multi = [c for c in clusters if len(c.member_indexes) > 1]
@@ -3354,7 +4349,7 @@ def export_html(grouped, raw, elapsed, path: Path, overall=None, clusters=None, 
 
     # --- Account cards: cluster-grouped or tier-grouped ---
     # Build a stable index→card_id map so the identity graph can target cards
-    # whichever rendering path we take.
+    # whichever rendering path take.
     card_id_by_index: dict[int, str] = {i: f"acct-{i}" for i in range(len(found))}
     index_by_result: dict[int, int] = {id(r): i for i, r in enumerate(found)}
 
@@ -3406,8 +4401,8 @@ def export_html(grouped, raw, elapsed, path: Path, overall=None, clusters=None, 
     # --- Confirmed-missing section ---
     # Collect every MISSING result whose tier is `confirmed_missing`
     # (set by confidence.annotate_missing) and surface them as a chip
-    # list. The OSINT signal is "we're SURE this handle is not on
-    # these platforms" — a finding on its own, distinct from "we
+    # list. The OSINT signal is "are SURE this handle is not on
+    # these platforms" - a finding on its own, distinct from "we
     # don't know."
     confirmed_missing_sites = sorted({
         r.site
@@ -3434,6 +4429,16 @@ def export_html(grouped, raw, elapsed, path: Path, overall=None, clusters=None, 
 
     # --- Auxiliary panels ---
     emails_section = _html_emails_section(found, emails) if emails else ""
+
+    # --- Phase 4 + 5 sections ----------------------------------------
+    # All four return self-contained <section> blocks with empty-state
+    # fallbacks, so the layout stays consistent whether or not the
+    # user passed --analyze / --graph / --tls-rotate.
+    analyst_briefing = _render_analyst_briefing(analysis)
+    red_team_section = _render_red_team(analysis)
+    breach_section = _render_breach_exposure(graph)
+    crosslinks_section = _render_cross_links(graph)
+    defended_section = _render_defended_perimeter(grouped)
 
     # --- Theme ---
     theme = "dark" if dark else "light"
@@ -3464,6 +4469,11 @@ def export_html(grouped, raw, elapsed, path: Path, overall=None, clusters=None, 
         photo_match_block=photo_match_block,
         detail_rows=detail_rows_html,
         graph_section=graph_section,
+        analyst_briefing=analyst_briefing,
+        breach_section=breach_section,
+        crosslinks_section=crosslinks_section,
+        red_team_section=red_team_section,
+        defended_section=defended_section,
         found_section=found_section_html,
         confirmed_missing_section=confirmed_missing_section,
         emails_section=emails_section,

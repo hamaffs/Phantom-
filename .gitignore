@@ -1,48 +1,33 @@
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
 # Python
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-*.egg-info/
-*.egg
+*.pyc
+*.pyo
 
-# Virtual environments
+# Test + lint caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual envs
 .venv/
 venv/
 env/
-ENV/
 
-# Phantom-generated reports (per-user output)
-*_report.html
-*_report.json
-*_report.md
-*_report.txt
-
-# Phantom on-disk cache + snapshots (live in ~/.cache by default;
-# this catches any local override)
-.cache/
-cache.json
-snapshots/
-
-# Claude Code per-user config
-.claude/
-
-# IDE / editor
+# Editor + OS
 .vscode/
 .idea/
 *.swp
-*.swo
-*~
 .DS_Store
 
-# OS
-Thumbs.db
-desktop.ini
-
-# Secrets — belt-and-braces in case any local testing leaves these around
+# Local config (anything with secrets)
+*.local
 .env
-.env.local
-*.key
-*.pem
-secrets.json
+
+# Phantom-specific
+.phantom-cache/
+*.local.json

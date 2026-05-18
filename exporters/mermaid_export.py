@@ -11,10 +11,10 @@ listing its member accounts with site name + score. When no
 disambiguation clusters exist (--no-cluster), falls back to the three
 confidence tiers.
 
-Example output for `hamaffs`:
+Example output for `alice`:
 
     mindmap
-      root((hamaffs))
+      root((alice))
         Primary identity (8 accounts)
           Threads · score 65
           YouTube · score 55
@@ -91,7 +91,7 @@ def export_mermaid(
     lines: list[str] = ["mindmap", f"  root(({safe_root}))"]
 
     if dis_clusters and found:
-        # Cluster-grouped rendering — preferred when disambiguation ran.
+        # Cluster-grouped rendering - preferred when disambiguation ran.
         label_map = {
             LABEL_PRIMARY: "Primary identity",
             LABEL_SECONDARY: "Secondary cluster",

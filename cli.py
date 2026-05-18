@@ -71,7 +71,10 @@ def _run_api_subcommand(argv: list[str]) -> int:
     - add SERVICE KEY: store a key (overwrites any existing one).
     - list: print configured services without revealing the keys.
     """
-    usage = "usage: phantom --api {add SERVICE KEY | list}"
+    usage = (
+        "usage: phantom --api {add SERVICE KEY | remove SERVICE | list}\n"
+        "  aliases: list = ls = show,  remove = rm = delete"
+    )
     if not argv:
         print(usage, file=sys.stderr)
         return 2
@@ -87,7 +90,17 @@ def _run_api_subcommand(argv: list[str]) -> int:
             return 2
         print(f"saved {argv[1].lower()} key to {path}")
         return 0
-    if cmd == "list":
+    if cmd in ("remove", "rm", "delete"):
+        if len(argv) != 2:
+            print("usage: phantom --api remove SERVICE", file=sys.stderr)
+            return 2
+        removed = apis.remove(argv[1])
+        if removed:
+            print(f"removed {argv[1].lower()} from {apis.config_path()}")
+            return 0
+        print(f"error: no key configured for {argv[1].lower()!r}", file=sys.stderr)
+        return 1
+    if cmd in ("list", "ls", "show"):
         services = apis.list_services()
         if not services:
             print("no API keys configured.")
@@ -95,11 +108,200 @@ def _run_api_subcommand(argv: list[str]) -> int:
             return 0
         print(f"Configured API keys ({apis.config_path()}):")
         for s in services:
-            print(f"  {s:<10}  [configured]")
+            print(f"  {s:<14}  [configured]")
         return 0
     print(f"unknown --api subcommand: {argv[0]}", file=sys.stderr)
     print(usage, file=sys.stderr)
     return 2
+
+
+def _run_case_subcommand(argv: list[str]) -> int:
+    """Handle `phantom case {new|add|show|list|rm} ...`.
+
+    Persistent investigation cases live as one JSON file each under
+    ~/.local/share/phantom/cases/. Each `case add` merges a fresh scan's
+    typed graph into the file, so a target's dossier accumulates over
+    multiple scans.
+    """
+    usage = "usage: phantom case {new NAME | add NAME TARGET | show NAME | list | rm NAME}"
+    if not argv:
+        print(usage, file=sys.stderr)
+        return 2
+    cmd = argv[0].lower()
+
+    if cmd == "new":
+        if len(argv) != 2:
+            print("usage: phantom case new NAME", file=sys.stderr)
+            return 2
+        from graph import case_path, new_case
+        try:
+            c = new_case(argv[1])
+        except (ValueError, FileExistsError) as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
+        print(f"created case {c.name!r} at {case_path(c.name)}")
+        return 0
+
+    if cmd == "list":
+        from graph import list_cases
+        cases = list_cases()
+        if not cases:
+            print("no cases yet. Create one: phantom case new NAME")
+            return 0
+        for c in cases:
+            targets = ",".join(c["targets"]) or "-"
+            print(
+                f"  {c['name']:<20}  {c['node_count']:>4} nodes  "
+                f"{c['edge_count']:>4} edges  targets={targets}  "
+                f"updated={c['updated_at']}"
+            )
+        return 0
+
+    if cmd == "show":
+        if len(argv) != 2:
+            print("usage: phantom case show NAME", file=sys.stderr)
+            return 2
+        from graph import load_case
+        try:
+            c = load_case(argv[1])
+        except FileNotFoundError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
+        print(f"case: {c.name}")
+        print(f"  created:  {c.created_at}")
+        print(f"  updated:  {c.updated_at}")
+        print(f"  targets:  {', '.join(c.targets) or '(none yet)'}")
+        nks = c.graph.counts_by_kind()
+        eks = c.graph.edge_counts_by_kind()
+        print(
+            f"  nodes:    {len(c.graph)}  "
+            f"({', '.join(f'{k}={v}' for k, v in sorted(nks.items())) or 'empty'})"
+        )
+        print(
+            f"  edges:    {c.graph.edge_count}  "
+            f"({', '.join(f'{k}={v}' for k, v in sorted(eks.items())) or 'empty'})"
+        )
+        identities = list(c.graph.nodes("Identity"))
+        if identities:
+            print(f"  identities: {len(identities)}")
+            for i in identities[:10]:
+                name = i.attrs.get("display_name") or "(unnamed)"
+                ac = i.attrs.get("account_count", "?")
+                print(f"    - {name} ({ac} accounts)")
+        return 0
+
+    if cmd == "rm":
+        if len(argv) != 2:
+            print("usage: phantom case rm NAME", file=sys.stderr)
+            return 2
+        from graph import case_exists, case_path, remove_case
+        name = argv[1]
+        if not case_exists(name):
+            print(f"error: case {name!r} not found", file=sys.stderr)
+            return 2
+        if sys.stdin.isatty():
+            try:
+                resp = input(
+                    f"delete case {name!r} ({case_path(name)})? [y/N] "
+                ).strip().lower()
+            except EOFError:
+                resp = ""
+            if resp != "y":
+                print("aborted")
+                return 0
+        remove_case(name)
+        print(f"removed case {name!r}")
+        return 0
+
+    if cmd == "add":
+        if len(argv) < 3:
+            print(
+                "usage: phantom case add NAME TARGET [SCAN_FLAGS...]\n"
+                "  example: phantom case add alice alice123 --exact --expand",
+                file=sys.stderr,
+            )
+            return 2
+        from graph import case_exists
+        name, target = argv[1], argv[2]
+        extra_flags = argv[3:]   # anything past NAME + TARGET → scan flags
+        if not case_exists(name):
+            print(
+                f"error: case {name!r} doesn't exist. "
+                f"create with: phantom case new {name}",
+                file=sys.stderr,
+            )
+            return 2
+        # Re-enter main() with TARGET as the positional + the hidden
+        # --case-save-to flag + any extra flags the user passed. This
+        # lets `phantom case add alice alice123 --exact --no-cache` skip
+        # the 10-min Full scan and use a fast --exact instead. The flag
+        # propagation also covers --expand, --tls-rotate, --simulate-
+        # session, --analyze, --export, --graph, etc. - anything the
+        # regular scan accepts.
+        return main([target, "--case-save-to", name, *extra_flags])
+
+    print(f"unknown case subcommand: {cmd}", file=sys.stderr)
+    print(usage, file=sys.stderr)
+    return 2
+
+
+def _run_analyze_subcommand(argv: list[str]) -> int:
+    """Handle `phantom analyze CASE_NAME [--out PATH]`.
+
+    Runs the LLM analyst (`analyst.analyze_all`) over a saved case's
+    graph without re-scanning. The LLM endpoint + model come from
+    `apis.get("llm_endpoint")` + `apis.get("llm_model")`.
+    """
+    if not argv or argv[0] in ("-h", "--help"):
+        print("usage: phantom analyze CASE_NAME [--out PATH]", file=sys.stderr)
+        return 2
+    name = argv[0]
+    out_path: Optional[Path] = None
+    i = 1
+    while i < len(argv):
+        if argv[i] in ("--out", "-o") and i + 1 < len(argv):
+            out_path = Path(argv[i + 1])
+            i += 2
+        else:
+            print(f"unknown analyze flag: {argv[i]}", file=sys.stderr)
+            return 2
+
+    try:
+        from graph import load_case
+    except ImportError as e:
+        print(f"error: graph package unavailable: {e}", file=sys.stderr)
+        return 2
+    try:
+        c = load_case(name)
+    except FileNotFoundError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+
+    if len(c.graph) == 0:
+        print(f"case {name!r} has an empty graph — add a target first:", file=sys.stderr)
+        print(f"  phantom case add {name} TARGET", file=sys.stderr)
+        return 2
+
+    from analyst import LLMClient, analyze_all
+    client = LLMClient()
+    print(
+        f"analyzing case {name!r} ({len(c.graph)} nodes, {c.graph.edge_count} edges) "
+        f"via {client.model} @ {client.endpoint}",
+        file=sys.stderr,
+    )
+    try:
+        analysis = asyncio.run(analyze_all(c.graph, client=client))
+    except RuntimeError as e:
+        print(f"analyze: {e}", file=sys.stderr)
+        return 1
+
+    if out_path:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(analysis, indent=2, ensure_ascii=False), encoding="utf-8")
+        print(f"analyst output written to {out_path}", file=sys.stderr)
+    return 0
+
+
 _HELP_DESCRIPTION = """\
 Phantom — find a username across 60 hand-picked platforms with high accuracy
 and pull whatever public profile data each platform exposes (display name,
@@ -191,7 +393,14 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
              "(default: 3). Prevents rate-limit throttling on Instagram, "
              "TikTok, etc. when running many variants against few hosts.",
     )
-    p.add_argument("--timeout", type=float, default=15.0)
+    p.add_argument(
+        "--timeout", type=float, default=8.0,
+        help="per-request timeout in seconds (default: 8). Lowered "
+             "from 15 in 2026-05 because most sites respond in <3s; "
+             "the long tail of 8-15s sites was dragging multi-variant "
+             "scans into 15-min territory. Bump to 12 if you scan from "
+             "a slow network or hit lots of CDN edge nodes.",
+    )
     p.add_argument(
         "--min-reliability", type=int, default=0,
         help="skip sites with a reliability score below this threshold",
@@ -235,6 +444,18 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
              "--proxy socks5://127.0.0.1:9050 (Tor). The same URL is used "
              "for both the aiohttp and curl_cffi backends.",
     )
+    p.add_argument(
+        "--proxy-pool", metavar="FILE",
+        help="path to a text file containing one proxy URL per line (lines "
+             "starting with # are ignored). Phantom rotates round-robin "
+             "per request across the pool. Mixes with --proxy: --proxy is "
+             "ignored when --proxy-pool is set. Use with Tor (multiple "
+             "SocksPort entries) or a residential-proxy list.",
+    )
+    # Hidden - kept for backward compat. Bot-walled hosts get strict
+    # routing in scanner.py regardless.
+    p.add_argument("--tls-rotate", action="store_true", help=argparse.SUPPRESS)
+    p.add_argument("--simulate-session", action="store_true", help=argparse.SUPPRESS)
     p.add_argument(
         "--js-render", action="store_true",
         help="force every site through the Playwright (headless Chromium) "
@@ -315,11 +536,7 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     )
     p.add_argument(
         "--expand", action="store_true",
-        help="after the first scan, harvest @handles from linked accounts "
-             "(Keybase proofs, Dev.to / About.me sameAs, Linktree links, "
-             "GitHub blog / x_handle, etc.) and run additional rounds. "
-             "Depth, handle count, and wall time are bounded by the flags "
-             "below.",
+        help=argparse.SUPPRESS,   # auto-on; see _enrich_enabled below
     )
     p.add_argument(
         "--expand-depth", type=int, default=2, metavar="N",
@@ -348,11 +565,7 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     )
     p.add_argument(
         "--wayback", action="store_true",
-        help="after the scan, query the Wayback Machine for each FOUND "
-             "account's oldest archived snapshot. Surfaces historical "
-             "evidence (account age, deletion dates) and stamps "
-             "wayback_first_snapshot + wayback_archive_url onto each "
-             "profile dict. Free public API, no auth required.",
+        help=argparse.SUPPRESS,   # auto-on; see _enrich_enabled below
     )
     p.add_argument(
         "--tui", action="store_true",
@@ -374,20 +587,11 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     )
     p.add_argument(
         "--github-deep", action="store_true",
-        help="when GitHub is FOUND, fetch deep public data: organizations, "
-             "recently-starred repos, verified linked social accounts, "
-             "and a commit-email leak via .patch download (catches ~70%% "
-             "of accounts that haven't enabled email-privacy). Adds "
-             "4–6 unauthenticated GitHub API requests per GitHub hit.",
+        help=argparse.SUPPRESS,   # auto-on; see _enrich_enabled below
     )
     p.add_argument(
         "--photo-ocr", action="store_true",
-        help="run Tesseract OCR over each FOUND avatar and feed any "
-             "handle-shaped text back into the variant queue. Catches "
-             "users who put their handle on their PFP. Requires "
-             "`apt install tesseract-ocr && pip install pytesseract`. "
-             "Implies --expand (the recovered handles only matter if "
-             "we re-scan with them).",
+        help=argparse.SUPPRESS,   # auto-on if Tesseract is installed
     )
     p.add_argument("--found-only", action="store_true", help="only print hits")
     p.add_argument(
@@ -402,11 +606,54 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     )
     p.add_argument("--json", dest="as_json", action="store_true", help="emit JSON results to stdout")
     p.add_argument(
-        "--export", metavar="FILE_OR_FORMAT",
+        "--export", metavar="FILE_OR_FORMAT", action="append", default=None,
         help="write a structured report. Pass a format ('html', 'json', 'md', 'pdf') "
              "and the file is auto-named '<input>_report.<ext>' in the cwd. "
              "Pass a path with extension (e.g. 'reports/out.html') to write "
-             "exactly there.",
+             "exactly there. Repeat the flag to write multiple formats in one "
+             "scan: --export r.html --export r.json --export r.pdf.",
+    )
+    p.add_argument(
+        "--graph", metavar="PATH", action="append", default=None,
+        help="emit the typed investigation graph after the scan. Format is "
+             "chosen by file extension: .json (default), .gexf (Gephi), "
+             ".html (interactive cytoscape.js view). The graph layers typed "
+             "nodes (Identity, Account, Email, Photo, Bio, Url, Domain, "
+             "Breach, ...) onto the scan output and runs every applicable "
+             "transform (e.g. HIBP for emails when a key is configured). "
+             "Repeat to emit multiple formats: --graph g.html --graph g.json.",
+    )
+    p.add_argument(
+        "--graph-depth", type=int, default=4, metavar="N",
+        help="max recursion rounds for graph transforms (default: 4). Each "
+             "round dispatches every applicable @transform to every node "
+             "that hasn't been processed yet; new nodes discovered in a "
+             "round become inputs for the next round. The runner stops "
+             "early when a round produces no new nodes (quiescent).",
+    )
+    p.add_argument(
+        "--graph-max-time", type=float, default=90.0, metavar="SECONDS",
+        help="wall-clock cap for the recursive graph build "
+             "(default: 90s). Once exceeded, no further rounds start.",
+    )
+    p.add_argument(
+        "--analyze", action="store_true",
+        help="after building the graph, run the LLM analyst over it: "
+             "streams a narrative dossier to stdout, then prints JSON for "
+             "contradictions, suggested pivots, and an adversarial profile. "
+             "Requires an OpenAI-compatible endpoint configured via "
+             "`phantom --api add llm_endpoint URL` + `--api add llm_model NAME` "
+             "(works with Ollama, LM Studio, OpenRouter, etc.). "
+             "Implies --graph (graph is required input).",
+    )
+    p.add_argument(
+        "--analyze-out", metavar="PATH",
+        help="when --analyze is set, also write the combined analyst output "
+             "(dossier + contradictions + pivots + adversarial) as JSON to PATH.",
+    )
+    p.add_argument(
+        "--case-save-to", metavar="NAME", default=None,
+        help=argparse.SUPPRESS,  # internal: used by `phantom case add`
     )
     _theme = p.add_mutually_exclusive_group()
     _theme.add_argument(
@@ -423,7 +670,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     # --- TUI mode short-circuit -------------------------------------
     # `phantom` with no args (and a real TTY) opens the interactive
     # ASCII-art launcher. `phantom --tui` opens the full Textual app.
-    # We branch BEFORE argparse so the launcher doesn't trigger the
+    #  branch BEFORE argparse so the launcher doesn't trigger the
     # `error: missing username` path.
     raw_argv = sys.argv[1:] if argv is None else argv
     if raw_argv == ["--tui"]:
@@ -445,6 +692,18 @@ def main(argv: Optional[list[str]] = None) -> int:
             return main_loop()
         # Non-interactive (piped) with no args: fall through so argparse
         # prints the usual usage error.
+    # `phantom case <subcmd> ...` - persistent investigation cases.
+    # Routed before argparse since the subcommand has its own arg shape.
+    # The "add" subcommand re-enters main() with the target as the
+    # positional + --case-save-to <name> to splice into the scan flow.
+    if raw_argv and raw_argv[0] == "case":
+        return _run_case_subcommand(raw_argv[1:])
+
+    # `phantom analyze CASE_NAME` - run the LLM analyst against a saved case
+    # without doing a fresh scan. Useful when you've accumulated evidence
+    # across multiple `case add` runs and want a fresh dossier.
+    if raw_argv and raw_argv[0] == "analyze":
+        return _run_analyze_subcommand(raw_argv[1:])
 
     args = parse_args(argv)
 
@@ -452,7 +711,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         return _run_api_subcommand(args.api)
 
     # --- --self-check -------------------------------------------------
-    # Probe a curated canary handle on each site. Branches early — no
+    # Probe a curated canary handle on each site. Branches early - no
     # username required, returns immediately with the drift count.
     if args.self_check:
         from self_check import run_self_check
@@ -548,6 +807,16 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     if args.max_variants > 0:
         variants = variants[: args.max_variants]
+
+    # Enrichment auto-on. --exact is the escape hatch (fast, single
+    # variant, no enrichment).
+    _enrich = not args.exact
+    args.expand = args.expand or _enrich
+    args.wayback = args.wayback or _enrich
+    args.github_deep = args.github_deep or _enrich
+    args.photo_ocr = args.photo_ocr or _enrich
+    args.tls_rotate = bool(args.tls_rotate)
+    args.simulate_session = bool(args.simulate_session)
 
     if args.list_variants:
         for v in variants:
@@ -645,6 +914,40 @@ def main(argv: Optional[list[str]] = None) -> int:
         )
     if args.proxy:
         print(f"proxy: routing through {args.proxy}", file=sys.stderr)
+    if args.analyze:
+        from apis import get as _apis_get
+        _endpoint = _apis_get("llm_endpoint") or "(default Ollama localhost)"
+        _model = _apis_get("llm_model") or "(default llama3.1:8b)"
+        print(
+            f"analyze: LLM analyst will run after scan via {_model} @ {_endpoint}",
+            file=sys.stderr,
+        )
+    # Optional proxy pool file (one URL per line, # comments).
+    proxy_pool: Optional[list[str]] = None
+    if getattr(args, "proxy_pool", None):
+        pool_path = Path(args.proxy_pool)
+        if not pool_path.is_file():
+            print(f"error: --proxy-pool file not found: {pool_path}", file=sys.stderr)
+            return 2
+        try:
+            lines = pool_path.read_text(encoding="utf-8").splitlines()
+        except OSError as e:
+            print(f"error: could not read --proxy-pool file: {e}", file=sys.stderr)
+            return 2
+        proxy_pool = [
+            ln.strip() for ln in lines
+            if ln.strip() and not ln.strip().startswith("#")
+        ]
+        if not proxy_pool:
+            print(f"error: --proxy-pool file {pool_path} contained no proxy URLs",
+                  file=sys.stderr)
+            return 2
+        print(
+            f"proxy-pool: rotating across {len(proxy_pool)} proxy URL"
+            f"{'s' if len(proxy_pool) != 1 else ''} from {pool_path}",
+            file=sys.stderr,
+        )
+
     phantom = Phantom(
         sites,
         concurrency=args.concurrency,
@@ -656,6 +959,9 @@ def main(argv: Optional[list[str]] = None) -> int:
         proxy=args.proxy,
         js_render=args.js_render,
         js_concurrency=args.js_concurrency,
+        tls_rotate=args.tls_rotate,
+        proxy_pool=proxy_pool,
+        simulate_session=args.simulate_session,
     )
 
     # Lives outside _scan_and_correlate so it survives to the scoring step.
@@ -665,14 +971,62 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     async def _scan_and_correlate():
         results = await phantom.run_many(variants)
+        # After the initial scan's progress bar clears, briefly confirm
+        # the scan completed before enter the silent post-scan phases.
+        # This is the marker that tells users "yes, the scan worked,
+        # are now in enrichment/analyst land."
+        n_found = sum(1 for _, rs in results for r in rs if r.exists is True)
+        print(
+            f"→ scan complete: {n_found} FOUND, "
+            f"entering enrichment phases...",
+            file=sys.stderr,
+        )
+
+        # --- Facebook public name search --------------------------------
+        # In name-mode, hit facebook.com/public/{Firstname-Lastname} to
+        # find profiles that don't have a vanity URL. Default Facebook
+        # privacy gives users a /people/Name/pfbidXXX URL instead - those
+        # are invisible to the regular vanity-URL scan but show up in
+        # this public search. Captures profiles missed entirely by the
+        # variant engine. Costs ~1 extra HTTP request total + up to N
+        # profile-page fetches for exact-name matches. Name-mode only.
+        if is_name_mode:
+            from facebook_search import discover_facebook_profiles
+            try:
+                from curl_cffi.requests import AsyncSession as _FBSession
+                async with _FBSession(impersonate="chrome") as fbs:
+                    extra = await discover_facebook_profiles(raw, fbs)
+            except Exception as e:
+                print(f"  (facebook public search skipped: {e})", file=sys.stderr)
+                extra = []
+            if extra:
+                print(
+                    f"  +{len(extra)} Facebook profile"
+                    f"{'s' if len(extra) != 1 else ''} from public name search",
+                    file=sys.stderr,
+                )
+                # Splice into the existing results under the Facebook
+                # bucket (or create one if no FB hits were in the scan).
+                fb_idx = next(
+                    (i for i, (site, _) in enumerate(results) if site == "Facebook"),
+                    None,
+                )
+                if fb_idx is None:
+                    results.append(("Facebook", list(extra)))
+                else:
+                    results[fb_idx] = (
+                        results[fb_idx][0],
+                        list(results[fb_idx][1]) + list(extra),
+                    )
 
         # --- Cross-link expansion ---------------------------------------
         # After the first scan completes, walk every FOUND profile's
-        # linked-account fields and queue any handles we haven't tried
+        # linked-account fields and queue any handles haven't tried
         # yet. Iterates up to --expand-depth rounds (default 2). Each
         # round's discoveries feed the next round's harvest. Hard caps on
         # total handles and wall-clock time prevent runaways.
         if args.expand:
+            print("→ expand: walking linked accounts for new handles...", file=sys.stderr)
             from expand import SOURCE_WEIGHTS, discover_new_handles
             tested: set[str] = set(variants)
             expand_start = time.monotonic()
@@ -699,7 +1053,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 new_pairs = discover_new_handles(found_now, tested)
                 if not new_pairs:
                     if round_no == 1:
-                        # First round with nothing to expand — silent exit,
+                        # First round with nothing to expand - silent exit,
                         # the user already knows expand was requested.
                         pass
                     else:
@@ -758,62 +1112,91 @@ def main(argv: Optional[list[str]] = None) -> int:
                 emails = await discover_emails(found_for_email, hunter_key)
                 _attach_emails_to_found(results, emails)
 
-        # --- GitHub deep-dive ----------------------------------------
-        if args.github_deep:
+        # Enrichment trio runs in parallel - each hits a different
+        # service (github.com, web.archive.org, profile CDNs).
+        async def _run_github_deep():
+            if not args.github_deep:
+                return
+            print("→ github-deep: fetching orgs / starred / commit-email...", file=sys.stderr)
             from github_deep import enrich_grouped as gh_enrich
+            t0 = time.monotonic()
             n_gh = await gh_enrich(results)
+            dur = time.monotonic() - t0
             if n_gh:
                 print(
                     f"github-deep: enriched {n_gh} GitHub account"
-                    f"{'s' if n_gh != 1 else ''} with orgs / starred "
-                    f"repos / commit email",
+                    f"{'s' if n_gh != 1 else ''} in {dur:.1f}s",
                     file=sys.stderr,
                 )
 
-        # --- Wayback Machine historical lookup ------------------------
-        if args.wayback:
+        async def _run_wayback():
+            if not args.wayback:
+                return
             from wayback import attach_wayback_to_found, lookup_many
             urls = [
                 r.url for _, rs in results for r in rs
                 if r.exists is True and r.url
             ]
-            urls = list(dict.fromkeys(urls))  # de-dup preserving order
-            if urls:
+            urls = list(dict.fromkeys(urls))
+            if not urls:
+                return
+            print(
+                f"→ wayback: querying {len(urls)} URL"
+                f"{'s' if len(urls) != 1 else ''} against the archive...",
+                file=sys.stderr,
+            )
+            t0 = time.monotonic()
+            wb = await lookup_many(urls)
+            dur = time.monotonic() - t0
+            if wb:
+                n_attached = attach_wayback_to_found(results, wb)
                 print(
-                    f"wayback: querying {len(urls)} URL"
-                    f"{'s' if len(urls) != 1 else ''} against the archive...",
+                    f"wayback: {n_attached} archived snapshot"
+                    f"{'s' if n_attached != 1 else ''} in {dur:.1f}s",
                     file=sys.stderr,
                 )
-                wb = await lookup_many(urls)
-                if wb:
-                    n_attached = attach_wayback_to_found(results, wb)
-                    print(
-                        f"wayback: {n_attached} account"
-                        f"{'s' if n_attached != 1 else ''} have archived "
-                        f"snapshots",
-                        file=sys.stderr,
-                    )
-                else:
-                    print("wayback: no snapshots found", file=sys.stderr)
+            else:
+                print(f"wayback: no snapshots found ({dur:.1f}s)", file=sys.stderr)
+
+        async def _run_photo_correlation():
+            if args.no_identity:
+                return None, None, [], None, None
+            fd: list[dict] = []
+            for _, rs in results:
+                for r in rs:
+                    if r.exists is True:
+                        fd.append(asdict(r))
+            fd = _dedupe_same_site_dicts(fd)
+            if not fd:
+                return None, None, [], None, None
+            print(
+                f"→ photo correlation: downloading + hashing "
+                f"{len(fd)} avatar(s)...",
+                file=sys.stderr,
+            )
+            t0 = time.monotonic()
+            deep_opts = photo_deep.options_from_apis(enabled=args.photo_deep)
+            ov, cl, dev, fm, pbm = await build_overall_and_clusters(
+                fd, deep_options=deep_opts,
+            )
+            dur = time.monotonic() - t0
+            print(f"photo correlation: {dur:.1f}s", file=sys.stderr)
+            return ov, cl, dev, fm, pbm
+
+        gh_task = asyncio.create_task(_run_github_deep())
+        wb_task = asyncio.create_task(_run_wayback())
+        photo_task = asyncio.create_task(_run_photo_correlation())
+        await asyncio.gather(gh_task, wb_task)
+        photo_result = await photo_task
+        if photo_result == (None, None, [], None, None):
+            overall, clusters, deep_evidence, face_map, photo_bytes_map = None, None, [], None, None
+        else:
+            overall, clusters, deep_evidence, face_map, photo_bytes_map = photo_result
         if args.no_identity:
             return results, None, [], emails, None, {}, None
-        found_dicts: list[dict] = []
-        for _, rs in results:
-            for r in rs:
-                if r.exists is True:
-                    found_dicts.append(asdict(r))
-        # Dedupe before correlation so a single profile reached via
-        # several URL aliases doesn't inflate the photo-match cluster.
-        found_dicts = _dedupe_same_site_dicts(found_dicts)
-        deep_options = photo_deep.options_from_apis(enabled=args.photo_deep)
-        overall, clusters, deep_evidence, face_map, photo_bytes_map = await build_overall_and_clusters(
-            found_dicts, deep_options=deep_options,
-        )
 
-        # --- Profile-photo OCR ---------------------------------------
-        # After photo correlation populates photo_bytes_map, OCR every
-        # avatar and feed any handle-shaped text into a single extra
-        # scan round. Skipped silently when Tesseract isn't installed.
+        # OCR every avatar; any handle-shaped text gets fed back into
+        # one more scan round. Silent no-op if Tesseract isn't installed.
         if args.photo_ocr and photo_bytes_map:
             from photo_ocr import available as ocr_available
             from photo_ocr import discover_handles as ocr_discover
@@ -912,13 +1295,13 @@ def main(argv: Optional[list[str]] = None) -> int:
     # Annotate MISSING results with their confidence tier. Mirror of the
     # FOUND scoring above: every cleanly-missing result on a reliable
     # site gets `tier = confirmed_missing`, everything else gets
-    # `uncertain_missing`. Exports + terminal can now distinguish "we're
-    # sure this handle isn't on Twitter" from "we couldn't tell".
+    # `uncertain_missing`. Exports + terminal can now distinguish "are
+    # sure this handle isn't on Twitter" from "couldn't tell".
     all_missing = [r for _, rs in grouped for r in rs if r.exists is False]
     if all_missing:
         _confidence.annotate_missing(all_missing)
 
-    # Identity disambiguation — cluster found accounts into distinct identity groups.
+    # Identity disambiguation - cluster found accounts into distinct identity groups.
     # Skipped when --no-cluster, --no-identity, or there are no found results.
     _dis_clusters = None
     no_cluster = getattr(args, "no_cluster", False)
@@ -961,11 +1344,131 @@ def main(argv: Optional[list[str]] = None) -> int:
             print()
             print(render_diff_terminal(d, color))
 
-    if args.export:
-        export_path = resolve_export_path(args.export, raw)
+    # --- Graph build + analyst (RUNS BEFORE EXPORT) ---------------------
+    # Build the typed graph from the scan results, run handle/photo
+    # correlation, then dispatch every registered @transform (HIBP, ...)
+    # against the populated nodes. Then optionally run the LLM analyst.
+    # Both feed into export_report below so the HTML/PDF reports include
+    # the graph-derived breach data + analyst dossier sections.
+    #
+    # When the user requests an HTML or PDF export, ALSO trigger a
+    # graph build (without writing it to disk) so the new Phase 4/5
+    # sections in the report can populate. This makes `--export html`
+    # a "single-command full dossier" - no extra flags needed for
+    # breach/blocked-perimeter visibility.
+    case_save_to = getattr(args, "case_save_to", None)
+    # --export / --graph are action="append" - list-or-None. Normalize
+    # to a list so the rest of the pipeline can iterate uniformly.
+    export_specs: list[str] = list(args.export or [])
+    graph_specs: list[str] = list(args.graph or [])
+    export_implies_graph = any(
+        resolve_export_path(e, raw).suffix.lower() in (".html", ".htm", ".pdf")
+        for e in export_specs
+    )
+    needs_graph = bool(graph_specs) or case_save_to or args.analyze or export_implies_graph
+    graph_obj_dict = None       # serialised graph passed to the exporters
+    analysis = None             # analyst output passed to the exporters
+    if needs_graph:
+        print(
+            "→ building investigation graph "
+            "(typed nodes + transforms + recursive enrichment)...",
+            file=sys.stderr,
+        )
+        import transforms as _transforms_pkg  # noqa: F401 — registers @transforms
+        from graph import (
+            graph_to_dict, merge_into_case, run_until_quiescent, write_graph,
+        )
+        from transforms import (
+            adapt as _adapt_scan,
+            correlate_handles as _correlate_handles,
+            correlate_photos as _correlate_photos,
+        )
+
+        async def _build_graph_async():
+            g = _adapt_scan(grouped, source="scan")
+            _correlate_handles(g)
+            if not args.no_identity:
+                await _correlate_photos(g)
+            # Phase 3 recursive runner - keeps firing transforms until
+            # the graph stops growing (or budgets exhaust). Between
+            # rounds, correlate_handles + correlate_photos are re-run
+            # automatically when new Accounts / Photos appear, so fresh
+            # Identity clusters form mid-recursion.
+            await run_until_quiescent(
+                g,
+                max_depth=args.graph_depth,
+                max_wall_seconds=args.graph_max_time,
+                re_correlate=not args.no_identity,
+            )
+            return g
+
+        graph_obj = asyncio.run(_build_graph_async())
+        # Serialised form for the exporters - they read attrs/sources/edges
+        # off plain dicts so they don't need to import the graph package.
+        graph_obj_dict = graph_to_dict(graph_obj)
+
+        for g in graph_specs:
+            graph_path = Path(g)
+            if graph_path.parent and not graph_path.parent.exists():
+                graph_path.parent.mkdir(parents=True, exist_ok=True)
+            write_graph(graph_obj, graph_path)
+            print(
+                f"{_c(color,'dim')}Graph written to {graph_path} "
+                f"({len(graph_obj)} nodes, {graph_obj.edge_count} edges)"
+                f"{_c(color,'reset')}",
+                file=sys.stderr,
+            )
+
+        if case_save_to:
+            merge_into_case(case_save_to, raw, graph_obj)
+            print(
+                f"{_c(color,'dim')}Case {case_save_to!r} updated with target "
+                f"{raw!r}{_c(color,'reset')}",
+                file=sys.stderr,
+            )
+
+        # --- Phase 4: LLM analyst over the graph -------------------------
+        if args.analyze:
+            from analyst import LLMClient, analyze_all
+            client = LLMClient()
+            print(
+                f"→ analyst: 4 concurrent LLM calls "
+                f"(dossier + contradictions + pivots + adversarial) "
+                f"via {client.model}",
+                file=sys.stderr,
+            )
+            try:
+                analysis = asyncio.run(analyze_all(graph_obj, client=client))
+            except RuntimeError as e:
+                print(f"analyze: {e}", file=sys.stderr)
+                analysis = None
+            if analysis and args.analyze_out:
+                out_path = Path(args.analyze_out)
+                out_path.parent.mkdir(parents=True, exist_ok=True)
+                out_path.write_text(json.dumps(analysis, indent=2, ensure_ascii=False), encoding="utf-8")
+                print(
+                    f"{_c(color,'dim')}Analyst output written to {out_path}{_c(color,'reset')}",
+                    file=sys.stderr,
+                )
+
+    # --- Export (RUNS LAST so it can include graph + analyst data) -----
+    # --export is repeatable: --export r.html --export r.json produces both
+    # files in one scan. Without this, each format requires a separate scan
+    # (which on Full preset is 10+ min wasted - see audit BUG #2).
+    for spec in export_specs:
+        export_path = resolve_export_path(spec, raw)
         if export_path.parent and not export_path.parent.exists():
             export_path.parent.mkdir(parents=True, exist_ok=True)
-        export_report(grouped, raw, elapsed, export_path, overall, clusters, emails, deep_evidence, face_map, dark=args.dark, dis_clusters=_dis_clusters, photo_bytes_map=photo_bytes_map)
+        print(f"→ writing {export_path.suffix.lstrip('.').upper() or 'JSON'} report to {export_path}...", file=sys.stderr)
+        export_report(
+            grouped, raw, elapsed, export_path,
+            overall, clusters, emails, deep_evidence, face_map,
+            dark=args.dark,
+            dis_clusters=_dis_clusters,
+            photo_bytes_map=photo_bytes_map,
+            graph=graph_obj_dict,
+            analysis=analysis,
+        )
         print(
             f"{_c(color,'dim')}Report written to {export_path}{_c(color,'reset')}",
             file=sys.stderr,

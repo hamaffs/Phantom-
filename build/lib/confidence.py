@@ -25,7 +25,7 @@ TIER_VERIFIED = "verified_identity"
 TIER_LIKELY   = "likely_match"
 TIER_IMPOSTOR = "possible_impostor"
 
-# Tiers for MISSING results — the asymmetry the previous version had
+# Tiers for MISSING results - the asymmetry the previous version had
 # where FOUND came with judgment but MISSING was an unlabelled mass.
 # Surfacing "confident MISSING" matters for OSINT: "this handle does NOT
 # exist on this platform" is itself an investigation finding.
@@ -35,7 +35,6 @@ TIER_MISSING_UNCERTAIN = "uncertain_missing"
 # ---------------------------------------------------------------------------
 # Default / placeholder avatar heuristics
 # ---------------------------------------------------------------------------
-
 _DEFAULT_AVATAR_FRAGMENTS = (
     "default_profile",
     "default_avatar",
@@ -67,7 +66,6 @@ def _is_default_avatar(url: str) -> bool:
 # ---------------------------------------------------------------------------
 # Impostor-affix detection
 # ---------------------------------------------------------------------------
-
 _IMPOSTOR_PREFIXES = frozenset({
     "official", "real", "the", "its", "iam", "i_am", "iamthe",
     "thisis", "this_is",
@@ -93,7 +91,6 @@ def _has_impostor_affix(variant: str) -> bool:
 # ---------------------------------------------------------------------------
 # Joined-date parser (no third-party deps)
 # ---------------------------------------------------------------------------
-
 def _joined_days_ago(joined_raw: str) -> Optional[int]:
     """Return approximate days since the account joined, or None."""
     if not joined_raw:
@@ -128,7 +125,6 @@ def _joined_days_ago(joined_raw: str) -> Optional[int]:
 # ---------------------------------------------------------------------------
 # Core scorer
 # ---------------------------------------------------------------------------
-
 def tier_from_score(score: int) -> str:
     if score >= 55:
         return TIER_VERIFIED
@@ -210,7 +206,6 @@ def score_result(
     # ------------------------------------------------------------------
     # Pre-compute shared data that multiple signals need
     # ------------------------------------------------------------------
-
     # All photo URLs that appear in clusters with 2+ members.
     multi_cluster_photo_urls: set[str] = set()
     has_any_multi_cluster = False
@@ -242,7 +237,6 @@ def score_result(
     # ------------------------------------------------------------------
     # Positive signals
     # ------------------------------------------------------------------
-
     if p.get("verified") is True:
         fire("verified badge on platform", 50)
 
@@ -285,7 +279,6 @@ def score_result(
     # ------------------------------------------------------------------
     # Negative signals
     # ------------------------------------------------------------------
-
     fc_val = p.get("followers")
     posts_val = p.get("posts")
     if (fc_val is not None and int(fc_val) == 0
@@ -339,9 +332,8 @@ def score_result(
 
 
 # ---------------------------------------------------------------------------
-# Batch scorer — mutates CheckResult objects in-place
+# Batch scorer - mutates CheckResult objects in-place
 # ---------------------------------------------------------------------------
-
 def score_all(
     found: list["CheckResult"],
     clusters: list,

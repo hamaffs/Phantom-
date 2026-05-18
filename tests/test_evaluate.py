@@ -77,14 +77,14 @@ class BotWallDetection(unittest.TestCase):
         body = "<title>Just a moment...</title><body>challenge</body>"
         exists, reason = evaluate(site, 200, body, "alice")
         self.assertIsNone(exists)
-        self.assertEqual(reason, "bot-wall")
+        self.assertTrue(reason.startswith("bot-wall"))
 
     def test_verify_you_are_human(self):
         site = _site(valid_status=[200])
         body = "<title>Verify you are human</title>"
         exists, reason = evaluate(site, 200, body, "alice")
         self.assertIsNone(exists)
-        self.assertEqual(reason, "bot-wall")
+        self.assertTrue(reason.startswith("bot-wall"))
 
     def test_bot_wall_does_not_fire_on_unrelated_title(self):
         site = _site(valid_status=[200])

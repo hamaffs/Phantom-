@@ -27,7 +27,7 @@ SEPARATORS = ("", ".", "_", "-")
 # Leetspeak substitutions. Only the safest mappings: characters that are
 # universally recognised as visual substitutes for letters. Each substitution
 # is applied to *every* occurrence (so "jose" → "j0se" not "j0se" and "jos3"
-# variants — that combinatorial expansion produces too much noise for the
+# variants - that combinatorial expansion produces too much noise for the
 # extra coverage). Most common substitution forms first.
 _LEET_MAP = {
     "o": "0",
@@ -37,9 +37,9 @@ _LEET_MAP = {
     "s": "5",
     "t": "7",
 }
-# Cap on how many leet variants we add per input. Even with the bounded
+# Cap on how many leet variants add per input. Even with the bounded
 # substitution above, applying all six to a long input creates a lot of
-# rarely-used forms — most leetspeak handles use one or two substitutions.
+# rarely-used forms - most leetspeak handles use one or two substitutions.
 _LEET_MAX_VARIANTS = 8
 
 _EXISTING_SEP_RE = re.compile(r"[._\-]")
@@ -56,7 +56,7 @@ _BLIND_SPLIT_MIN_PIECE = 2  # avoid 1-char prefixes/suffixes ("h.amaffs", "hamaf
 # Name-mode floor: short permutations like "kmalay" / "malayk" collide with
 # huge numbers of unrelated accounts on every platform, drowning the signal.
 # Below 8 chars there's not enough entropy for a name-derived handle to
-# uniquely identify the target — drop them.
+# uniquely identify the target - drop them.
 _NAME_MIN_LEN = 8
 
 
