@@ -16,7 +16,6 @@ You give it a handle (or a name, or a profile URL), it checks ~99 sites in paral
 - **HTML report** with an interactive identity graph, mentioned URLs, breach exposure (free APIs), and an optional LLM dossier.
 - **Cases** — `phantom case new "case_name" && phantom case add "case_name" handle1 && phantom case add "case_name" handle2` accumulates findings into one persistent investigation file.
 
-![dossier report](screenshots/phantom_.png)
 
 ## Install
 
