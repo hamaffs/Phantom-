@@ -431,49 +431,102 @@ _IG_STATS_RE = re.compile(
 
 
 def extract_instagram(body: str, username: str) -> dict:
-    """Parse Instagram's public profile HTML response (og:* meta tags).
+    """Parse an Instagram profile response.
 
-    Instagram's old `i.instagram.com/api/v1/users/web_profile_info/` JSON
-    endpoint started returning 401 + `require_login:true` for unauthed
-    requests sometime around April 2026. Phantom now hits the public
-    `www.instagram.com/{username}/` HTML page instead. The page strips
-    the SSR JSON for logged-out viewers but still exposes the og:* meta
-    tags, which are enough for scoring (display name, photo, follower
-    count). Bio + tagged-user @-mentions are no longer accessible
-    without a session cookie.
+    Two response shapes are supported:
 
-    Returns the same dict shape as before so the rest of the pipeline
-    (scoring, cross-linking, graph transforms) doesn't notice the
-    backend change.
+    1. JSON from `i.instagram.com/api/v1/users/web_profile_info/?username=X`
+       (the primary URL in sites.json). Carries bio, bio_links, external_url,
+       business_email, follower/following/post counts, fbid_v2, etc.
+       The endpoint sometimes rate-limits unauthed clients with a
+       `require_login: true` body — in that case JSON parsing returns
+       no useful fields and we fall through to the og:* path.
+
+    2. HTML from `www.instagram.com/{username}/` (fallback). Only the og:*
+       meta tags are available to logged-out viewers — enough for
+       display_name + follower count + photo, but no bio.
     """
     info: dict = {}
 
-    # og:title - "{display_name} (&
-    #064;{handle}) &
-    #x2022; Instagram photos and videos"
+    # --- Path 1: JSON API response -----------------------------------
+    if body.lstrip().startswith("{"):
+        try:
+            data = json.loads(body)
+        except Exception:
+            data = None
+        user = (data or {}).get("data", {}).get("user") if isinstance(data, dict) else None
+        if isinstance(user, dict) and user:
+            if user.get("full_name"):
+                info["display_name"] = user["full_name"]
+            if user.get("biography"):
+                info["bio"] = user["biography"]
+            photo = user.get("profile_pic_url_hd") or user.get("profile_pic_url") or ""
+            if photo:
+                info["photo"] = photo
+            fc = (user.get("edge_followed_by") or {}).get("count")
+            if fc is not None:
+                info["followers"] = int(fc)
+            fw = (user.get("edge_follow") or {}).get("count")
+            if fw is not None:
+                info["following"] = int(fw)
+            posts = (user.get("edge_owner_to_timeline_media") or {}).get("count")
+            if posts is not None:
+                info["posts"] = int(posts)
+            if user.get("is_verified"):
+                info["verified"] = True
+            if user.get("is_private"):
+                info["private"] = True
+            ext_url = user.get("external_url")
+            if isinstance(ext_url, str) and ext_url.strip():
+                info["website"] = ext_url.strip()
+            # Bio entities: tagged @usernames + inline URLs.
+            linked: list[str] = []
+            bwe = user.get("biography_with_entities") or {}
+            entities = bwe.get("entities") if isinstance(bwe, dict) else None
+            if isinstance(entities, list):
+                for ent in entities:
+                    if not isinstance(ent, dict):
+                        continue
+                    u_node = ent.get("user")
+                    if isinstance(u_node, dict):
+                        tagged = u_node.get("username")
+                        if isinstance(tagged, str) and tagged and tagged.lower() != username.lower():
+                            linked.append(f"https://instagram.com/{tagged}")
+                    inline_url = ent.get("url")
+                    if isinstance(inline_url, str) and inline_url.strip():
+                        linked.append(inline_url.strip())
+            if linked:
+                seen: set[str] = set()
+                info["linked_accounts"] = [u for u in linked if not (u.lower() in seen or seen.add(u.lower()))]
+            if user.get("business_email"):
+                info["email"] = user["business_email"]
+            if user.get("category_name"):
+                info["category"] = user["category_name"]
+            if user.get("fbid_v2"):
+                info["fb_id"] = str(user["fbid_v2"])
+            return info
+        # JSON parsed but no `data.user` (e.g. rate-limit response).
+        # Fall through to og:* below in case body has both (it doesn't,
+        # but the fallthrough is harmless).
+
+    # --- Path 2: HTML fallback (og:* tags) ---------------------------
     m_title = _IG_OG_TITLE_RE.search(body)
     if m_title:
         title = unescape(m_title.group(1)).strip()
-        # Strip the "(@handle) • Instagram photos and videos" tail.
-        # Anything before " (@" is the display name. For accounts with
-        # no display name set, the title starts with a space then "(@..)"
-        # so display_name ends up empty (don't fire the signal in that case).
         m_dn = re.match(r"^(.*?)\s*\(@", title)
         if m_dn:
             dn = m_dn.group(1).strip()
             if dn:
                 info["display_name"] = dn
 
-    # og:description - "N Followers, M Following, K Posts - See ..."
     m_desc = _IG_OG_DESC_RE.search(body)
     if m_desc:
         desc = unescape(m_desc.group(1))
         m_stats = _IG_STATS_RE.search(desc)
         if m_stats:
-            f, fl, p = m_stats.group(1), m_stats.group(2), m_stats.group(3)
-            fc = _parse_human_number(f)
-            fw = _parse_human_number(fl)
-            pc = _parse_human_number(p)
+            fc = _parse_human_number(m_stats.group(1))
+            fw = _parse_human_number(m_stats.group(2))
+            pc = _parse_human_number(m_stats.group(3))
             if fc is not None:
                 info["followers"] = fc
             if fw is not None:
@@ -481,7 +534,6 @@ def extract_instagram(body: str, username: str) -> dict:
             if pc is not None:
                 info["posts"] = pc
 
-    # og:image - profile picture URL (HD)
     m_img = _IG_OG_IMAGE_RE.search(body)
     if m_img:
         photo = unescape(m_img.group(1)).strip()

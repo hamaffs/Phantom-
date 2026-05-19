@@ -305,10 +305,11 @@
   {
     "name": "Instagram",
     "category": "social",
-    "url": "https://www.instagram.com/{username}/",
+    "url": "https://i.instagram.com/api/v1/users/web_profile_info/?username={username}",
     "profile_url": "https://www.instagram.com/{username}/",
     "method": "message",
     "presence_text": [
+      "\"username\":\"{username}\"",
       "(&#064;{username})",
       "(@{username})"
     ],
@@ -324,6 +325,7 @@
       404
     ],
     "headers": {
+      "x-ig-app-id": "936619743392459",
       "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
       "Accept": "*/*"
     },
